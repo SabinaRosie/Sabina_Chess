@@ -1,4 +1,4 @@
-package com.example.chess_demo_sabina
+package com.sabina.chess_demo_sabina
 
 import io.flutter.embedding.android.FlutterActivity
 

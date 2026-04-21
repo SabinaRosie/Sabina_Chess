@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
+import '../services/api_service.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -12,8 +14,10 @@ class SignupPage extends StatefulWidget {
 class _SignupPageState extends State<SignupPage> {
   final _formKey = GlobalKey<FormState>();
 
-  String? name, email, password;
+  String? name, email, password, confirmPassword;
   bool showPassword = false;
+  bool showConfirmPassword = false;
+  bool loader = false;
 
   // 🔹 Email validation
   bool isValidEmail(String email) {
@@ -46,16 +50,12 @@ class _SignupPageState extends State<SignupPage> {
               key: _formKey,
               child: Column(
                 children: [
-
                   const SizedBox(height: 60),
 
                   // 🔹 Title
                   const Text(
                     "Create Account",
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
                   ),
 
                   const SizedBox(height: 50),
@@ -109,7 +109,7 @@ class _SignupPageState extends State<SignupPage> {
                         return "Enter password";
                       }
                       if (!isValidPassword(value)) {
-                        return "Weak password";
+                        return "Weak password (min 6 chars, A-Z, a-z, 0-9, special)";
                       }
                       return null;
                     },
@@ -129,6 +129,39 @@ class _SignupPageState extends State<SignupPage> {
                     ),
                   ),
 
+                  const SizedBox(height: 20),
+
+                  // ================= CONFIRM PASSWORD =================
+                  _buildLabel("CONFIRM PASSWORD"),
+                  const SizedBox(height: 4),
+                  TextFormField(
+                    obscureText: !showConfirmPassword,
+                    onChanged: (value) => confirmPassword = value,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Confirm password";
+                      }
+                      if (value != password) {
+                        return "Passwords do not match";
+                      }
+                      return null;
+                    },
+                    decoration: _inputDecoration("Confirm password").copyWith(
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          showConfirmPassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            showConfirmPassword = !showConfirmPassword;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(height: 30),
 
                   // ================= SIGNUP BUTTON =================
@@ -136,24 +169,59 @@ class _SignupPageState extends State<SignupPage> {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         if (_formKey.currentState!.validate()) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("Signup successful"),
-                            ),
+                          setState(() {
+                            loader = true;
+                          });
+
+                          final result = await ApiService.signup(
+                            name!,
+                            email!,
+                            password!,
                           );
 
-                          RouteGenerator.navigateToPage(
-                            context,
-                            Routes.loginRoute,
-                          );
+                          if (context.mounted) {
+                            setState(() {
+                              loader = false;
+                            });
+
+                            if (result['success']) {
+                              final prefs =
+                                  await SharedPreferences.getInstance();
+                              await prefs.setString(
+                                'accessToken',
+                                result['data']['access'],
+                              );
+                              await prefs.setString(
+                                'refreshToken',
+                                result['data']['refresh'],
+                              );
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Signup successful"),
+                                ),
+                              );
+
+                              RouteGenerator.navigateToPageWithoutStack(
+                                context,
+                                Routes.homeRoute,
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(result['error'])),
+                              );
+                            }
+                          }
                         }
                       },
-                      child: const Text(
-                        "Sign Up",
-                        style: TextStyle(fontSize: 18),
-                      ),
+                      child: loader
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text(
+                              "Sign Up",
+                              style: TextStyle(fontSize: 18),
+                            ),
                     ),
                   ),
 
@@ -198,10 +266,7 @@ class _SignupPageState extends State<SignupPage> {
       alignment: Alignment.centerLeft,
       child: Text(
         text,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-        ),
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       ),
     );
   }
@@ -210,13 +275,8 @@ class _SignupPageState extends State<SignupPage> {
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 20,
-        vertical: 16,
-      ),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
     );
   }
 }

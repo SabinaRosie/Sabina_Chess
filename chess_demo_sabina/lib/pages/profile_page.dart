@@ -1,0 +1,635 @@
+import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
+import '../utils/route_const.dart';
+import '../utils/route_generator.dart';
+
+class ProfilePage extends StatefulWidget {
+  const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage>
+    with SingleTickerProviderStateMixin {
+  String? username;
+  String? email;
+  bool isLoading = true;
+  final LocalAuthentication auth = LocalAuthentication();
+
+  // Settings state
+  bool _biometricEnabled = false;
+  bool _soundEnabled = true;
+  bool _notificationsEnabled = true;
+
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _fetchProfile();
+    _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+
+    if (token != null) {
+      final result = await ApiService.getProfile(token);
+      if (result['success']) {
+        setState(() {
+          username = result['data']['username'];
+          email = result['data']['email'];
+          isLoading = false;
+        });
+      } else {
+        setState(() => isLoading = false);
+      }
+    } else {
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _biometricEnabled = prefs.getBool('isBiometricEnabled') ?? false;
+      _soundEnabled = prefs.getBool('soundEnabled') ?? true;
+      _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
+    });
+  }
+
+  Future<void> _saveSetting(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
+  }
+
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    final accessToken = prefs.getString('accessToken');
+    final refreshToken = prefs.getString('refreshToken');
+
+    if (accessToken != null && refreshToken != null) {
+      await ApiService.logout(accessToken, refreshToken);
+    }
+
+    await prefs.clear();
+
+    if (mounted) {
+      RouteGenerator.navigateToPageWithoutStack(context, Routes.loginRoute);
+    }
+  }
+
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1e2a45),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Logout',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to log out?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _logout();
+            },
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1a1a2e), Color(0xFF16213e), Color(0xFF0f3460)],
+          ),
+        ),
+        child: isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFFe2b96f)),
+              )
+            : SafeArea(
+                child: Column(
+                  children: [
+                    // ── Header ──
+                    _buildHeader(),
+
+                    // ── Tab Bar ──
+                    _buildTabBar(),
+
+                    // ── Tab Views ──
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildPersonalInfoTab(),
+                          _buildSettingsTab(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // HEADER
+  // ─────────────────────────────────────────────────────
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+      child: Center(
+        child: Column(
+          children: [
+            // Avatar
+            Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFe2b96f), Color(0xFFc9973a)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFe2b96f).withOpacity(0.4),
+                    blurRadius: 18,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Text(
+                  '♔',
+                  style: TextStyle(fontSize: 42, color: Colors.white),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Name
+            Text(
+              username ?? 'Player',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 4),
+            // email
+            Text(
+              email ?? '—',
+              style: const TextStyle(fontSize: 14, color: Colors.white54),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // TAB BAR
+  // ─────────────────────────────────────────────────────
+  Widget _buildTabBar() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          color: const Color(0xFFe2b96f),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        labelColor: const Color(0xFF1a1a2e),
+        unselectedLabelColor: Colors.white54,
+        labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        dividerColor: Colors.transparent,
+        tabs: const [
+          Tab(text: 'Personal Info'),
+          Tab(text: 'Settings'),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // PERSONAL INFO TAB
+  // ─────────────────────────────────────────────────────
+  Widget _buildPersonalInfoTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          _sectionTitle('Account Details'),
+          const SizedBox(height: 14),
+          _infoTile(Icons.person_outline_rounded, 'Username', username ?? '—'),
+          const SizedBox(height: 12),
+          _infoTile(Icons.email_outlined, 'Email', email ?? '—'),
+          const SizedBox(height: 28),
+          _sectionTitle('Game Stats'),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _gameStatCard('🏆', 'Wins', '0'),
+              const SizedBox(width: 12),
+              _gameStatCard('💀', 'Losses', '0'),
+              const SizedBox(width: 12),
+              _gameStatCard('🤝', 'Draws', '0'),
+            ],
+          ),
+          const SizedBox(height: 28),
+          // Logout button at the bottom of personal info tab
+          _logoutButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoTile(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFFe2b96f), size: 22),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12, color: Colors.white38),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _gameStatCard(String emoji, String label, String value) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Column(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 26)),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // SETTINGS TAB
+  // ─────────────────────────────────────────────────────
+  Widget _buildSettingsTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          _sectionTitle('Security'),
+          const SizedBox(height: 14),
+          _settingsTile(
+            icon: Icons.fingerprint_rounded,
+            title: 'Fingerprint Login',
+            subtitle: 'Use biometrics to sign in quickly',
+            value: _biometricEnabled,
+            onChanged: (val) async {
+              if (val) {
+                // Enabling fingerprint
+                try {
+                  bool canCheckBiometrics = await auth.canCheckBiometrics;
+                  bool isDeviceSupported = await auth.isDeviceSupported();
+
+                  if (!canCheckBiometrics || !isDeviceSupported) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Biometrics not supported on this device"),
+                        ),
+                      );
+                    }
+                    return;
+                  }
+
+                  // Authenticate to confirm
+                  bool didAuthenticate = await auth.authenticate(
+                    localizedReason: 'Please authenticate to enable fingerprint login',
+                    options: const AuthenticationOptions(
+                      biometricOnly: true,
+                      stickyAuth: true,
+                    ),
+                  );
+
+                  if (didAuthenticate) {
+                    setState(() => _biometricEnabled = true);
+                    await _saveSetting('isBiometricEnabled', true);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Fingerprint login enabled")),
+                      );
+                    }
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Error: $e")),
+                    );
+                  }
+                }
+              } else {
+                // Disabling fingerprint
+                setState(() => _biometricEnabled = false);
+                await _saveSetting('isBiometricEnabled', false);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Fingerprint login disabled")),
+                  );
+                }
+              }
+            },
+          ),
+          const SizedBox(height: 28),
+          _sectionTitle('Preferences'),
+          const SizedBox(height: 14),
+          _settingsTile(
+            icon: Icons.volume_up_rounded,
+            title: 'Sound Effects',
+            subtitle: 'Play sounds during the game',
+            value: _soundEnabled,
+            onChanged: (val) async {
+              setState(() => _soundEnabled = val);
+              await _saveSetting('soundEnabled', val);
+            },
+          ),
+          const SizedBox(height: 12),
+          _settingsTile(
+            icon: Icons.notifications_rounded,
+            title: 'Notifications',
+            subtitle: 'Receive game updates and alerts',
+            value: _notificationsEnabled,
+            onChanged: (val) async {
+              setState(() => _notificationsEnabled = val);
+              await _saveSetting('notificationsEnabled', val);
+            },
+          ),
+          const SizedBox(height: 28),
+          _sectionTitle('Account'),
+          const SizedBox(height: 14),
+          _actionTile(
+            icon: Icons.lock_reset_rounded,
+            title: 'Change Password',
+            subtitle: 'Update your account password',
+            iconColor: const Color(0xFF5b9cff),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Change Password coming soon!')),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _actionTile(
+            icon: Icons.logout_rounded,
+            title: 'Logout',
+            subtitle: 'Sign out of your account',
+            iconColor: Colors.redAccent,
+            onTap: _showLogoutDialog,
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingsTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFe2b96f).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: const Color(0xFFe2b96f), size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(fontSize: 12, color: Colors.white38),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: const Color(0xFFe2b96f),
+            activeTrackColor: const Color(0xFFe2b96f).withOpacity(0.3),
+            inactiveThumbColor: Colors.white38,
+            inactiveTrackColor: Colors.white12,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color iconColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 12, color: Colors.white38),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: Colors.white24,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────────────
+  Widget _sectionTitle(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFFe2b96f),
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+
+  Widget _logoutButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton.icon(
+        onPressed: _showLogoutDialog,
+        icon: const Icon(Icons.logout_rounded),
+        label: const Text('Logout', style: TextStyle(fontSize: 17)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.redAccent.withOpacity(0.85),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+          elevation: 4,
+        ),
+      ),
+    );
+  }
+}
