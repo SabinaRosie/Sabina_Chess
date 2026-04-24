@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
+import '../utils/color_utils.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -30,7 +31,7 @@ class _SplashScreenState extends State<SplashScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
+            colors: AppColors.woodGradient,
           ),
         ),
         child: Stack(
@@ -52,7 +53,7 @@ class _SplashScreenState extends State<SplashScreen> {
                           style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             letterSpacing: 1.5,
                           ),
                         ),
@@ -61,7 +62,7 @@ class _SplashScreenState extends State<SplashScreen> {
                           "Strategy. Skill. Victory.",
                           style: TextStyle(
                             fontSize: 16,
-                            color: Colors.white70,
+                            color: AppColors.textSecondary,
                             fontStyle: FontStyle.italic,
                           ),
                         ),
@@ -76,7 +77,7 @@ class _SplashScreenState extends State<SplashScreen> {
               child: Padding(
                 padding: EdgeInsets.only(bottom: 40.0),
                 child: CircularProgressIndicator(
-                  color: Colors.white24,
+                  color: AppColors.secondaryColor.withOpacity(0.5),
                   strokeWidth: 2,
                 ),
               ),

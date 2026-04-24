@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
+import '../utils/color_utils.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -45,7 +46,7 @@ class _DashboardPageState extends State<DashboardPage>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF1a1a2e), Color(0xFF16213e), Color(0xFF0f3460)],
+            colors: AppColors.woodGradient,
           ),
         ),
         child: SafeArea(
@@ -67,13 +68,13 @@ class _DashboardPageState extends State<DashboardPage>
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: const LinearGradient(
-                          colors: [Color(0xFFe2b96f), Color(0xFFc9973a)],
+                          colors: [AppColors.primaryColor, AppColors.secondaryColor],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFe2b96f).withOpacity(0.45),
+                            color: AppColors.secondaryColor.withOpacity(0.4),
                             blurRadius: 30,
                             spreadRadius: 4,
                           ),
@@ -93,9 +94,9 @@ class _DashboardPageState extends State<DashboardPage>
                     const Text(
                       'Welcome to Chess',
                       style: TextStyle(
-                        fontSize: 30,
+                        fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         letterSpacing: 0.4,
                       ),
                       textAlign: TextAlign.center,
@@ -108,7 +109,7 @@ class _DashboardPageState extends State<DashboardPage>
                       width: 56,
                       height: 3,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFe2b96f),
+                        color: AppColors.primaryColor,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -132,7 +133,7 @@ class _DashboardPageState extends State<DashboardPage>
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFFe2b96f),
+                              color: AppColors.secondaryColor,
                             ),
                           ),
                           const SizedBox(height: 14),
@@ -146,7 +147,7 @@ class _DashboardPageState extends State<DashboardPage>
                             'a grandmaster in the making, every move tells a story.',
                             style: TextStyle(
                               fontSize: 14.5,
-                              color: Colors.white70,
+                              color: AppColors.textSecondary,
                               height: 1.75,
                             ),
                             textAlign: TextAlign.center,
@@ -182,13 +183,13 @@ class _DashboardPageState extends State<DashboardPage>
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFe2b96f),
-                          foregroundColor: const Color(0xFF1a1a2e),
+                          backgroundColor: AppColors.primaryColor,
+                          foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(32),
                           ),
                           elevation: 10,
-                          shadowColor: const Color(0xFFe2b96f).withOpacity(0.5),
+                          shadowColor: AppColors.primaryColor.withOpacity(0.5),
                         ),
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -235,7 +236,7 @@ class _DashboardPageState extends State<DashboardPage>
             Text(
               title,
               style: const TextStyle(
-                color: Color(0xFFe2b96f),
+                color: AppColors.secondaryColor,
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
               ),
