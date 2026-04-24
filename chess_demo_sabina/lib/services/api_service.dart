@@ -137,5 +137,21 @@ class ApiService {
       return {'success': false, 'error': e.toString()};
     }
   }
+
+  static Future<Map<String, dynamic>> getUsers(String accessToken) async {
+    final url = Uri.parse('${AppConstants.baseUrl}/users');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      );
+      return _handleResponse(response, 'Failed to fetch users');
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }
 

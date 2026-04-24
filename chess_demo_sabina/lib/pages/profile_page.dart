@@ -83,7 +83,9 @@ class _ProfilePageState extends State<ProfilePage>
       await ApiService.logout(accessToken, refreshToken);
     }
 
-    await prefs.clear();
+    // 🔹 Clear only session tokens, PRESERVE biometric settings as requested
+    await prefs.remove('accessToken');
+    await prefs.remove('refreshToken');
 
     if (mounted) {
       RouteGenerator.navigateToPageWithoutStack(context, Routes.loginRoute);
@@ -382,38 +384,39 @@ class _ProfilePageState extends State<ProfilePage>
 
                   if (!canCheckBiometrics || !isDeviceSupported) {
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Biometrics not supported on this device"),
-                        ),
-                      );
+                      _showErrorDialog(context, "Biometrics not supported on this device.");
                     }
                     return;
                   }
 
-                  // Authenticate to confirm
+                  // 1. Mandatory biometric scan before enabling
                   bool didAuthenticate = await auth.authenticate(
                     localizedReason: 'Please authenticate to enable fingerprint login',
-                    options: const AuthenticationOptions(
-                      biometricOnly: true,
-                      stickyAuth: true,
-                    ),
+                    options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
                   );
 
                   if (didAuthenticate) {
-                    setState(() => _biometricEnabled = true);
-                    await _saveSetting('isBiometricEnabled', true);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Fingerprint login enabled")),
-                      );
+                    final prefs = await SharedPreferences.getInstance();
+                    final access = prefs.getString('accessToken');
+                    final refresh = prefs.getString('refreshToken');
+
+                    if (access != null && refresh != null) {
+                      // 2. Store in SharedPreferences
+                      await prefs.setString('bio_access_token', access);
+                      await prefs.setString('bio_refresh_token', refresh);
+                      
+                      setState(() => _biometricEnabled = true);
+                      await _saveSetting('isBiometricEnabled', true);
+                      if (mounted) {
+                        _showMessageDialog(context, "Fingerprint Enabled", "You can now use your fingerprint for quick login!");
+                      }
+                    } else {
+                       _showErrorDialog(context, "Session error. Please logout and login again.");
                     }
                   }
                 } catch (e) {
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("Error: $e")),
-                    );
+                    _showErrorDialog(context, "Biometric Error: $e");
                   }
                 }
               } else {
@@ -421,9 +424,7 @@ class _ProfilePageState extends State<ProfilePage>
                 setState(() => _biometricEnabled = false);
                 await _saveSetting('isBiometricEnabled', false);
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Fingerprint login disabled")),
-                  );
+                  _showMessageDialog(context, "Fingerprint Disabled", "Biometric login has been turned off.");
                 }
               }
             },
@@ -461,9 +462,7 @@ class _ProfilePageState extends State<ProfilePage>
             subtitle: 'Update your account password',
             iconColor: const Color(0xFF5b9cff),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Change Password coming soon!')),
-              );
+              _showMessageDialog(context, "Coming Soon", "Change Password feature will be available in the next update!");
             },
           ),
           const SizedBox(height: 12),
@@ -629,6 +628,52 @@ class _ProfilePageState extends State<ProfilePage>
           ),
           elevation: 4,
         ),
+      ),
+    );
+  }
+
+  void _showErrorDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline_rounded, color: Colors.redAccent),
+            SizedBox(width: 10),
+            Text("Error"),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMessageDialog(BuildContext context, String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Color(0xFFe2b96f)),
+            const SizedBox(width: 10),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFe2b96f))),
+          ),
+        ],
       ),
     );
   }

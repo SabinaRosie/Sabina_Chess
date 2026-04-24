@@ -14,13 +14,40 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-
   String? username, password;
   bool showPassword = false;
-  bool rememberMe = false;
   bool loader = false;
+  
+  final localAuth = LocalAuthentication();
+  bool isBiometricAvailable = false;
+  bool isBiometricEnabled = false;
 
-  // 🔹 Username validation
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometricSupport();
+    _checkExistingSession();
+  }
+
+  Future<void> _checkBiometricSupport() async {
+    bool canCheck = await localAuth.canCheckBiometrics;
+    bool isSupported = await localAuth.isDeviceSupported();
+    setState(() {
+      isBiometricAvailable = canCheck && isSupported;
+    });
+  }
+
+  Future<void> _checkExistingSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    isBiometricEnabled = prefs.getBool('isBiometricEnabled') ?? false;
+    
+    // Auto-trigger biometric if enabled
+    if (isBiometricEnabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loginWithBiometric();
+      });
+    }
+  }
   bool isValidUsername(String username) {
     return username.trim().isNotEmpty;
   }
@@ -156,50 +183,27 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       onPressed: () async {
                         if (_formKey.currentState!.validate()) {
-                          setState(() {
-                            loader = true;
-                          });
+                          setState(() => loader = true);
 
-                          final result = await ApiService.login(
-                            username!,
-                            password!,
-                          );
+                          final result = await ApiService.login(username!, password!);
 
                           if (context.mounted) {
-                            setState(() {
-                              loader = false;
-                            });
+                            setState(() => loader = false);
 
                             if (result['success']) {
-                              final prefs =
-                                  await SharedPreferences.getInstance();
-                              await prefs.setString(
-                                'accessToken',
-                                result['data']['access'],
-                              );
-                              await prefs.setString(
-                                'refreshToken',
-                                result['data']['refresh'],
-                              );
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setString('accessToken', result['data']['access']);
+                              await prefs.setString('refreshToken', result['data']['refresh']);
 
-                              // 🔹 Check if biometric is enabled; if not, ask to enable
-                              bool isBiometricEnabled =
-                                  prefs.getBool('isBiometricEnabled') ?? false;
+                              // 🔹 Also save credentials if rememberMe or for Biometric setup later
+                              await prefs.setString('last_username', username!);
 
-                              if (!isBiometricEnabled && context.mounted) {
-                                _showEnableBiometricDialog(context, prefs);
+                              // 🔹 Check if biometric setup is needed
+                              if (!isBiometricEnabled && isBiometricAvailable && context.mounted) {
+                                _showEnableBiometricDialog(context, result['data']['access'], result['data']['refresh']);
                               } else {
-                                RouteGenerator.navigateToPageWithoutStack(
-                                  context,
-                                  Routes.homeRoute,
-                                );
+                                RouteGenerator.navigateToPageWithoutStack(context, Routes.homeRoute);
                               }
-
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text("Login successful"),
-                                ),
-                              );
                             } else {
                               if (context.mounted) {
                                 _showErrorDialog(context, result['error']);
@@ -218,83 +222,21 @@ class _LoginPageState extends State<LoginPage> {
 
                   // ================= FINGERPRINT LOGIN =================
                   IconButton(
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.fingerprint,
-                      size: 50,
-                      color: Colors.blueAccent,
+                      size: 60,
+                      color: isBiometricEnabled ? Colors.green : Colors.grey,
                     ),
-                    onPressed: () async {
-                      final localAuth = LocalAuthentication();
-
-                      try {
-                        bool canCheckBiometrics =
-                            await localAuth.canCheckBiometrics;
-                        bool isDeviceSupported = await localAuth
-                            .isDeviceSupported();
-
-                        if (!canCheckBiometrics || !isDeviceSupported) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  "Biometrics not supported on this device",
-                                ),
-                              ),
-                            );
-                          }
-                          return;
-                        }
-
-                        final prefs = await SharedPreferences.getInstance();
-                        bool isBiometricEnabled =
-                            prefs.getBool('isBiometricEnabled') ?? false;
-
-                        if (!isBiometricEnabled) {
-                          if (context.mounted) {
-                            _showBiometricNotEnabledDialog(context);
-                          }
-                          return;
-                        }
-
-                        bool didAuthenticate = await localAuth.authenticate(
-                          localizedReason: 'Please authenticate to login',
-                          options: const AuthenticationOptions(
-                            biometricOnly: true,
-                            stickyAuth: true,
-                          ),
-                        );
-
-                        if (didAuthenticate && context.mounted) {
-                          final token = prefs.getString('accessToken');
-                          if (token != null && token.isNotEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Biometric Login successful"),
-                              ),
-                            );
-                            RouteGenerator.navigateToPageWithoutStack(
-                              context,
-                              Routes.homeRoute,
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  "Session expired. Please login manually.",
-                                ),
-                              ),
-                            );
-                          }
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text("Error: $e")));
-                        }
+                    onPressed: () {
+                      if (isBiometricEnabled) {
+                        _loginWithBiometric();
+                      } else {
+                        _showBiometricNotEnabledDialog(context);
                       }
                     },
                   ),
+                  if (isBiometricEnabled)
+                    const Text("Fingerprint Enabled", style: TextStyle(color: Colors.green, fontSize: 12)),
 
                   const SizedBox(height: 20),
 
@@ -330,45 +272,34 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // 🔹 Dialog to enable biometrics
-  void _showEnableBiometricDialog(
-    BuildContext context,
-    SharedPreferences prefs,
-  ) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Enable Fingerprint?"),
-        content: const Text(
-          "Would you like to use your fingerprint for faster login next time?",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              RouteGenerator.navigateToPageWithoutStack(
-                context,
-                Routes.homeRoute,
-              );
-            },
-            child: const Text("Maybe Later"),
-          ),
-          TextButton(
-            onPressed: () async {
-              await prefs.setBool('isBiometricEnabled', true);
-              if (context.mounted) {
-                Navigator.pop(context);
-                RouteGenerator.navigateToPageWithoutStack(
-                  context,
-                  Routes.homeRoute,
-                );
-              }
-            },
-            child: const Text("Enable"),
-          ),
-        ],
-      ),
-    );
+  // 🔹 Biometric Login Core Logic
+  Future<void> _loginWithBiometric() async {
+    try {
+      bool didAuth = await localAuth.authenticate(
+        localizedReason: 'Scan fingerprint to access your account',
+        options: const AuthenticationOptions(stickyAuth: true, biometricOnly: true),
+      );
+
+      if (didAuth && context.mounted) {
+        final prefs = await SharedPreferences.getInstance();
+        final accessToken = prefs.getString('bio_access_token');
+        if (accessToken != null) {
+          // Validate token by fetching profile
+          final result = await ApiService.getProfile(accessToken);
+          if (result['success'] && context.mounted) {
+            // Restore session
+            await prefs.setString('accessToken', accessToken);
+            RouteGenerator.navigateToPageWithoutStack(context, Routes.homeRoute);
+            return;
+          }
+        }
+        if (context.mounted) {
+           _showMessageDialog(context, "Session Expired", "Your biometric session has expired. Please login with your password once to restore it.");
+        }
+      }
+    } catch (e) {
+      debugPrint("Biometric Auth error: $e");
+    }
   }
 
   // 🔹 Dialog for biometric not enabled
@@ -379,18 +310,69 @@ class _LoginPageState extends State<LoginPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
-            Icon(Icons.info_outline, color: Colors.blueAccent),
+            Icon(Icons.fingerprint, color: Colors.blueAccent),
             SizedBox(width: 10),
-            Text("Fingerprint Login"),
+            Text("Enable Fingerprint"),
           ],
         ),
         content: const Text(
-          "Fingerprint login is not enabled yet. Please login manually with your username and password first.",
+          "To use fingerprint login, please log in manually with your username and password once first. \n\nAfter logging in, you'll be asked if you want to enable it!",
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text("Got it", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🔹 Dialog to enable biometrics
+  void _showEnableBiometricDialog(
+    BuildContext context,
+    String accessToken,
+    String refreshToken,
+  ) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text("Enable Fingerprint?"),
+        content: const Text(
+          "Use your fingerprint for secure and fast login next time.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              RouteGenerator.navigateToPageWithoutStack(context, Routes.homeRoute);
+            },
+            child: const Text("Skip"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              // 1. Mandatory biometric scan before enabling
+              bool didAuth = await localAuth.authenticate(
+                localizedReason: 'Scan fingerprint to enable biometric login',
+                options: const AuthenticationOptions(stickyAuth: true, biometricOnly: true),
+              );
+
+              if (didAuth && context.mounted) {
+                // 2. Store tokens in SharedPreferences
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('bio_access_token', accessToken);
+                await prefs.setString('bio_refresh_token', refreshToken);
+                await prefs.setBool('isBiometricEnabled', true);
+                
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  _showMessageDialog(context, "Setup Successful", "Fingerprint login has been enabled! You can now use it for your next login.");
+                  RouteGenerator.navigateToPageWithoutStack(context, Routes.homeRoute);
+                }
+              }
+            },
+            child: const Text("Enable & Verify"),
           ),
         ],
       ),
@@ -407,14 +389,38 @@ class _LoginPageState extends State<LoginPage> {
           children: [
             Icon(Icons.error_outline_rounded, color: Colors.redAccent),
             SizedBox(width: 10),
-            Text("Login Failed"),
+            Text("Error"),
           ],
         ),
         content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Try Again", style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🔹 Dialog for general messages
+  void _showMessageDialog(BuildContext context, String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Colors.blueAccent),
+            const SizedBox(width: 10),
+            Text(title),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
