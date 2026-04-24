@@ -48,12 +48,9 @@ class _UsersListPageState extends State<UsersListPage> {
   }
 
   Future<void> _makeCall(String username) async {
-    // For demo purposes, we use a placeholder number. 
+    // For demo purposes, we use a placeholder number.
     // In a real app, you would fetch the phone number from the backend.
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: '1234567890', 
-    );
+    final Uri launchUri = Uri(scheme: 'tel', path: '1234567890');
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
     } else {
@@ -67,7 +64,10 @@ class _UsersListPageState extends State<UsersListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Community Users", style: TextStyle(color: AppColors.textPrimary)),
+        title: const Text(
+          "Community Users",
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
         backgroundColor: AppColors.backgroundColor,
         elevation: 0,
       ),
@@ -80,20 +80,32 @@ class _UsersListPageState extends State<UsersListPage> {
           ),
         ),
         child: isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.secondaryColor,
+                ),
+              )
             : error != null
-                ? Center(child: Text(error!, style: const TextStyle(color: Colors.red)))
-                : users.isEmpty
-                    ? const Center(child: Text("No users found", style: TextStyle(color: Colors.white54)))
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: users.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final user = users[index];
-                          return _buildUserCard(user);
-                        },
-                      ),
+            ? Center(
+                child: Text(error!, style: const TextStyle(color: Colors.red)),
+              )
+            : users.isEmpty
+            ? const Center(
+                child: Text(
+                  "No users found",
+                  style: TextStyle(color: Colors.white54),
+                ),
+              )
+            : ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: users.length,
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final user = users[index];
+                  return _buildUserCard(user);
+                },
+              ),
       ),
     );
   }
@@ -111,12 +123,19 @@ class _UsersListPageState extends State<UsersListPage> {
           backgroundColor: AppColors.secondaryColor.withOpacity(0.2),
           child: Text(
             user['username'][0].toUpperCase(),
-            style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: AppColors.secondaryColor,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
         title: Text(
           user['username'],
-          style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
         ),
         subtitle: Text(
           user['email'],
@@ -152,7 +171,10 @@ class _UsersListPageState extends State<UsersListPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text(
+              "OK",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),

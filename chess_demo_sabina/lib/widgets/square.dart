@@ -26,10 +26,8 @@ class Square extends StatelessWidget {
         color: isCheck
             ? AppColors.checkSquare
             : isHighlighted
-                ? AppColors.highlight
-                : (isWhite
-                    ? AppColors.lightSquare
-                    : AppColors.darkSquare),
+            ? AppColors.highlight
+            : (isWhite ? AppColors.lightSquare : AppColors.darkSquare),
         child: piece != null ? Image.asset(piece!.image) : null,
       ),
     );

@@ -3,7 +3,10 @@ import 'package:http/http.dart' as http;
 import '../utils/const.dart';
 
 class ApiService {
-  static Map<String, dynamic> _handleResponse(http.Response response, String defaultError) {
+  static Map<String, dynamic> _handleResponse(
+    http.Response response,
+    String defaultError,
+  ) {
     try {
       final data = jsonDecode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -11,12 +14,17 @@ class ApiService {
       } else {
         return {
           'success': false,
-          'error': data is Map ? (data['error'] ?? data['detail'] ?? defaultError) : defaultError
+          'error': data is Map
+              ? (data['error'] ?? data['detail'] ?? defaultError)
+              : defaultError,
         };
       }
     } catch (e) {
       if (response.statusCode >= 500) {
-        return {'success': false, 'error': 'Server error (500). Please try again later.'};
+        return {
+          'success': false,
+          'error': 'Server error (500). Please try again later.',
+        };
       } else if (response.statusCode == 404) {
         return {'success': false, 'error': 'Endpoint not found (404).'};
       }
@@ -77,7 +85,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> verifyOtp(String email, String otp) async {
+  static Future<Map<String, dynamic>> verifyOtp(
+    String email,
+    String otp,
+  ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/verify-otp');
     try {
       final response = await http.post(
@@ -91,7 +102,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> resetPassword(String email, String newPassword) async {
+  static Future<Map<String, dynamic>> resetPassword(
+    String email,
+    String newPassword,
+  ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/reset-password');
     try {
       final response = await http.post(
@@ -121,7 +135,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> logout(String accessToken, String refreshToken) async {
+  static Future<Map<String, dynamic>> logout(
+    String accessToken,
+    String refreshToken,
+  ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/logout');
     try {
       final response = await http.post(
@@ -154,4 +171,3 @@ class ApiService {
     }
   }
 }
-

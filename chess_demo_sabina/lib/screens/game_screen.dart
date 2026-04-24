@@ -7,12 +7,8 @@ class GameScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Chess Game"),
-      ),
-      body: Center(
-        child: ChessBoardWidget(),
-      ),
+      appBar: AppBar(title: const Text("Chess Game")),
+      body: Center(child: ChessBoardWidget()),
     );
   }
 }

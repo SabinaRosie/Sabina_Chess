@@ -24,26 +24,90 @@ class Board {
       );
     }
 
-    board[0][0] = Piece(type: PieceType.rook, isWhite: false, image: 'assets/images/black_rook.png');
-    board[0][7] = Piece(type: PieceType.rook, isWhite: false, image: 'assets/images/black_rook.png');
-    board[7][0] = Piece(type: PieceType.rook, isWhite: true, image: 'assets/images/white_rook.png');
-    board[7][7] = Piece(type: PieceType.rook, isWhite: true, image: 'assets/images/white_rook.png');
+    board[0][0] = Piece(
+      type: PieceType.rook,
+      isWhite: false,
+      image: 'assets/images/black_rook.png',
+    );
+    board[0][7] = Piece(
+      type: PieceType.rook,
+      isWhite: false,
+      image: 'assets/images/black_rook.png',
+    );
+    board[7][0] = Piece(
+      type: PieceType.rook,
+      isWhite: true,
+      image: 'assets/images/white_rook.png',
+    );
+    board[7][7] = Piece(
+      type: PieceType.rook,
+      isWhite: true,
+      image: 'assets/images/white_rook.png',
+    );
 
-    board[0][1] = Piece(type: PieceType.knight, isWhite: false, image: 'assets/images/black_knight.png');
-    board[0][6] = Piece(type: PieceType.knight, isWhite: false, image: 'assets/images/black_knight.png');
-    board[7][1] = Piece(type: PieceType.knight, isWhite: true, image: 'assets/images/white_knight.png');
-    board[7][6] = Piece(type: PieceType.knight, isWhite: true, image: 'assets/images/white_knight.png');
+    board[0][1] = Piece(
+      type: PieceType.knight,
+      isWhite: false,
+      image: 'assets/images/black_knight.png',
+    );
+    board[0][6] = Piece(
+      type: PieceType.knight,
+      isWhite: false,
+      image: 'assets/images/black_knight.png',
+    );
+    board[7][1] = Piece(
+      type: PieceType.knight,
+      isWhite: true,
+      image: 'assets/images/white_knight.png',
+    );
+    board[7][6] = Piece(
+      type: PieceType.knight,
+      isWhite: true,
+      image: 'assets/images/white_knight.png',
+    );
 
-    board[0][2] = Piece(type: PieceType.bishop, isWhite: false, image: 'assets/images/black_bishop.png');
-    board[0][5] = Piece(type: PieceType.bishop, isWhite: false, image: 'assets/images/black_bishop.png');
-    board[7][2] = Piece(type: PieceType.bishop, isWhite: true, image: 'assets/images/white_bishop.png');
-    board[7][5] = Piece(type: PieceType.bishop, isWhite: true, image: 'assets/images/white_bishop.png');
+    board[0][2] = Piece(
+      type: PieceType.bishop,
+      isWhite: false,
+      image: 'assets/images/black_bishop.png',
+    );
+    board[0][5] = Piece(
+      type: PieceType.bishop,
+      isWhite: false,
+      image: 'assets/images/black_bishop.png',
+    );
+    board[7][2] = Piece(
+      type: PieceType.bishop,
+      isWhite: true,
+      image: 'assets/images/white_bishop.png',
+    );
+    board[7][5] = Piece(
+      type: PieceType.bishop,
+      isWhite: true,
+      image: 'assets/images/white_bishop.png',
+    );
 
-    board[0][3] = Piece(type: PieceType.queen, isWhite: false, image: 'assets/images/black_queen.png');
-    board[7][3] = Piece(type: PieceType.queen, isWhite: true, image: 'assets/images/white_queen.png');
+    board[0][3] = Piece(
+      type: PieceType.queen,
+      isWhite: false,
+      image: 'assets/images/black_queen.png',
+    );
+    board[7][3] = Piece(
+      type: PieceType.queen,
+      isWhite: true,
+      image: 'assets/images/white_queen.png',
+    );
 
-    board[0][4] = Piece(type: PieceType.king, isWhite: false, image: 'assets/images/black_king.png');
-    board[7][4] = Piece(type: PieceType.king, isWhite: true, image: 'assets/images/white_king.png');
+    board[0][4] = Piece(
+      type: PieceType.king,
+      isWhite: false,
+      image: 'assets/images/black_king.png',
+    );
+    board[7][4] = Piece(
+      type: PieceType.king,
+      isWhite: true,
+      image: 'assets/images/white_king.png',
+    );
   }
 
   bool isInBounds(int r, int c) => r >= 0 && c >= 0 && r < 8 && c < 8;
@@ -93,34 +157,57 @@ class Board {
         break;
 
       case PieceType.rook:
-        moves.addAll(_linearMoves(row, col, piece, [
-          [1, 0], [-1, 0], [0, 1], [0, -1]
-        ]));
+        moves.addAll(
+          _linearMoves(row, col, piece, [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+          ]),
+        );
         break;
 
       case PieceType.bishop:
-        moves.addAll(_linearMoves(row, col, piece, [
-          [1, 1], [1, -1], [-1, 1], [-1, -1]
-        ]));
+        moves.addAll(
+          _linearMoves(row, col, piece, [
+            [1, 1],
+            [1, -1],
+            [-1, 1],
+            [-1, -1],
+          ]),
+        );
         break;
 
       case PieceType.queen:
-        moves.addAll(_linearMoves(row, col, piece, [
-          [1, 0], [-1, 0], [0, 1], [0, -1],
-          [1, 1], [1, -1], [-1, 1], [-1, -1]
-        ]));
+        moves.addAll(
+          _linearMoves(row, col, piece, [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+            [1, 1],
+            [1, -1],
+            [-1, 1],
+            [-1, -1],
+          ]),
+        );
         break;
 
       case PieceType.knight:
         List<List<int>> kMoves = [
-          [2, 1], [2, -1], [-2, 1], [-2, -1],
-          [1, 2], [1, -2], [-1, 2], [-1, -2]
+          [2, 1],
+          [2, -1],
+          [-2, 1],
+          [-2, -1],
+          [1, 2],
+          [1, -2],
+          [-1, 2],
+          [-1, -2],
         ];
         for (var m in kMoves) {
           int r = row + m[0], c = col + m[1];
           if (isInBounds(r, c) &&
-              (board[r][c] == null ||
-                  board[r][c]!.isWhite != piece.isWhite)) {
+              (board[r][c] == null || board[r][c]!.isWhite != piece.isWhite)) {
             moves.add([r, c]);
           }
         }
@@ -145,7 +232,11 @@ class Board {
   }
 
   List<List<int>> _linearMoves(
-      int row, int col, Piece piece, List<List<int>> dirs) {
+    int row,
+    int col,
+    Piece piece,
+    List<List<int>> dirs,
+  ) {
     List<List<int>> moves = [];
 
     for (var d in dirs) {
@@ -172,9 +263,7 @@ class Board {
     for (int r = 0; r < 8; r++) {
       for (int c = 0; c < 8; c++) {
         final p = board[r][c];
-        if (p != null &&
-            p.type == PieceType.king &&
-            p.isWhite == isWhite) {
+        if (p != null && p.type == PieceType.king && p.isWhite == isWhite) {
           return [r, c];
         }
       }

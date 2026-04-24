@@ -23,11 +23,13 @@ class HomeDashboard extends StatelessWidget {
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
-              
+
               // 🔹 Game Description Card
               Card(
                 elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -39,7 +41,10 @@ class HomeDashboard extends StatelessWidget {
                           SizedBox(width: 10),
                           Text(
                             "The Ultimate Challenge",
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -52,16 +57,19 @@ class HomeDashboard extends StatelessWidget {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 40),
-              
+
               // 🔹 Play Button
               Center(
                 child: Column(
                   children: [
                     const Text(
                       "Ready to make your move?",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                     const SizedBox(height: 20),
                     SizedBox(
@@ -76,21 +84,27 @@ class HomeDashboard extends StatelessWidget {
                           ),
                         ),
                         onPressed: () {
-                          RouteGenerator.navigateToPage(context, Routes.gameRoute);
+                          RouteGenerator.navigateToPage(
+                            context,
+                            Routes.gameRoute,
+                          );
                         },
                         icon: const Icon(Icons.play_arrow_rounded, size: 30),
                         label: const Text(
                           "START PLAYING CHESS",
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 40),
-              
+
               // 🔹 Stats Preview Placeholder
               const Text(
                 "Recent Activity",

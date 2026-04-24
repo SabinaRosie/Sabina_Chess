@@ -5,9 +5,5 @@ class Piece {
   final bool isWhite;
   String image;
 
-  Piece({
-    required this.type,
-    required this.isWhite,
-    required this.image,
-  });
+  Piece({required this.type, required this.isWhite, required this.image});
 }

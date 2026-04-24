@@ -30,11 +30,7 @@ class _SplashScreenState extends State<SplashScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF1A1A2E),
-              Color(0xFF16213E),
-              Color(0xFF0F3460),
-            ],
+            colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
           ),
         ),
         child: Stack(
@@ -49,10 +45,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          "♟️",
-                          style: TextStyle(fontSize: 80),
-                        ),
+                        const Text("♟️", style: TextStyle(fontSize: 80)),
                         const SizedBox(height: 20),
                         const Text(
                           "Grandmaster Chess",

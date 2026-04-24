@@ -110,7 +110,10 @@ class _ProfilePageState extends State<ProfilePage>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -144,7 +147,9 @@ class _ProfilePageState extends State<ProfilePage>
         ),
         child: isLoading
             ? const Center(
-                child: CircularProgressIndicator(color: AppColors.secondaryColor),
+                child: CircularProgressIndicator(
+                  color: AppColors.secondaryColor,
+                ),
               )
             : SafeArea(
                 child: Column(
@@ -385,15 +390,22 @@ class _ProfilePageState extends State<ProfilePage>
 
                   if (!canCheckBiometrics || !isDeviceSupported) {
                     if (mounted) {
-                      _showErrorDialog(context, "Biometrics not supported on this device.");
+                      _showErrorDialog(
+                        context,
+                        "Biometrics not supported on this device.",
+                      );
                     }
                     return;
                   }
 
                   // 1. Mandatory biometric scan before enabling
                   bool didAuthenticate = await auth.authenticate(
-                    localizedReason: 'Please authenticate to enable fingerprint login',
-                    options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
+                    localizedReason:
+                        'Please authenticate to enable fingerprint login',
+                    options: const AuthenticationOptions(
+                      biometricOnly: true,
+                      stickyAuth: true,
+                    ),
                   );
 
                   if (didAuthenticate) {
@@ -405,14 +417,21 @@ class _ProfilePageState extends State<ProfilePage>
                       // 2. Store in SharedPreferences
                       await prefs.setString('bio_access_token', access);
                       await prefs.setString('bio_refresh_token', refresh);
-                      
+
                       setState(() => _biometricEnabled = true);
                       await _saveSetting('isBiometricEnabled', true);
                       if (mounted) {
-                        _showMessageDialog(context, "Fingerprint Enabled", "You can now use your fingerprint for quick login!");
+                        _showMessageDialog(
+                          context,
+                          "Fingerprint Enabled",
+                          "You can now use your fingerprint for quick login!",
+                        );
                       }
                     } else {
-                       _showErrorDialog(context, "Session error. Please logout and login again.");
+                      _showErrorDialog(
+                        context,
+                        "Session error. Please logout and login again.",
+                      );
                     }
                   }
                 } catch (e) {
@@ -425,7 +444,11 @@ class _ProfilePageState extends State<ProfilePage>
                 setState(() => _biometricEnabled = false);
                 await _saveSetting('isBiometricEnabled', false);
                 if (mounted) {
-                  _showMessageDialog(context, "Fingerprint Disabled", "Biometric login has been turned off.");
+                  _showMessageDialog(
+                    context,
+                    "Fingerprint Disabled",
+                    "Biometric login has been turned off.",
+                  );
                 }
               }
             },
@@ -463,7 +486,11 @@ class _ProfilePageState extends State<ProfilePage>
             subtitle: 'Update your account password',
             iconColor: const Color(0xFF5b9cff),
             onTap: () {
-              _showMessageDialog(context, "Coming Soon", "Change Password feature will be available in the next update!");
+              _showMessageDialog(
+                context,
+                "Coming Soon",
+                "Change Password feature will be available in the next update!",
+              );
             },
           ),
           const SizedBox(height: 12),
@@ -649,7 +676,10 @@ class _ProfilePageState extends State<ProfilePage>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text(
+              "OK",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -672,7 +702,13 @@ class _ProfilePageState extends State<ProfilePage>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFe2b96f))),
+            child: const Text(
+              "OK",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFe2b96f),
+              ),
+            ),
           ),
         ],
       ),

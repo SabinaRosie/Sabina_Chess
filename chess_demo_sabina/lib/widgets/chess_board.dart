@@ -30,8 +30,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
           validMoves = board.getValidMoves(row, col);
         }
       } else {
-        bool isValid =
-            validMoves.any((m) => m[0] == row && m[1] == col);
+        bool isValid = validMoves.any((m) => m[0] == row && m[1] == col);
 
         if (isValid) {
           board.movePiece(selectedRow!, selectedCol!, row, col);
@@ -67,8 +66,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
       aspectRatio: 1,
       child: GridView.builder(
         itemCount: 64,
-        gridDelegate:
-            const SliverGridDelegateWithFixedCrossAxisCount(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 8,
         ),
         itemBuilder: (context, index) {
