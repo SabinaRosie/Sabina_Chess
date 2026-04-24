@@ -24,7 +24,7 @@ class Square extends StatelessWidget {
       onTap: onTap,
       child: Container(
         color: isCheck
-            ? Colors.red
+            ? AppColors.checkSquare
             : isHighlighted
                 ? AppColors.highlight
                 : (isWhite

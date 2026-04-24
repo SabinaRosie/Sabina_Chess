@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import '../utils/color_utils.dart';
 
 class UsersListPage extends StatefulWidget {
   const UsersListPage({super.key});
@@ -66,8 +67,8 @@ class _UsersListPageState extends State<UsersListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Community Users"),
-        backgroundColor: const Color(0xFF1a1a2e),
+        title: const Text("Community Users", style: TextStyle(color: AppColors.textPrimary)),
+        backgroundColor: AppColors.backgroundColor,
         elevation: 0,
       ),
       body: Container(
@@ -75,11 +76,11 @@ class _UsersListPageState extends State<UsersListPage> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF1a1a2e), Color(0xFF16213e)],
+            colors: AppColors.woodGradient,
           ),
         ),
         child: isLoading
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFFe2b96f)))
+            ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
             : error != null
                 ? Center(child: Text(error!, style: const TextStyle(color: Colors.red)))
                 : users.isEmpty
@@ -107,15 +108,15 @@ class _UsersListPageState extends State<UsersListPage> {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         leading: CircleAvatar(
-          backgroundColor: const Color(0xFFe2b96f).withOpacity(0.2),
+          backgroundColor: AppColors.secondaryColor.withOpacity(0.2),
           child: Text(
             user['username'][0].toUpperCase(),
-            style: const TextStyle(color: Color(0xFFe2b96f), fontWeight: FontWeight.bold),
+            style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold),
           ),
         ),
         title: Text(
           user['username'],
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+          style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
         ),
         subtitle: Text(
           user['email'],

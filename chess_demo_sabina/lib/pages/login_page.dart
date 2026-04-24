@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
 import '../services/api_service.dart';
+import '../utils/color_utils.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -60,8 +61,17 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
+      backgroundColor: AppColors.backgroundColor,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: AppColors.woodGradient,
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Form(
@@ -76,8 +86,10 @@ class _LoginPageState extends State<LoginPage> {
                     child: Text(
                       "Welcome",
                       style: TextStyle(
-                        fontSize: 30,
+                        fontSize: 32,
                         fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                        letterSpacing: 1.5,
                       ),
                     ),
                   ),
@@ -89,14 +101,20 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 4),
 
                   TextFormField(
+                    style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "Enter username",
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
-                      border: OutlineInputBorder(
+                      hintStyle: const TextStyle(color: Colors.white38),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(color: Colors.white12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(color: AppColors.secondaryColor),
                       ),
                     ),
                     onChanged: (value) => username = value.trim(),
@@ -119,20 +137,25 @@ class _LoginPageState extends State<LoginPage> {
 
                   TextFormField(
                     obscureText: !showPassword,
+                    style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "Enter password",
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
-                      border: OutlineInputBorder(
+                      hintStyle: const TextStyle(color: Colors.white38),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(color: Colors.white12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(color: AppColors.secondaryColor),
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          showPassword
-                              ? Icons.visibility
-                              : Icons.visibility_off,
+                          showPassword ? Icons.visibility : Icons.visibility_off,
+                          color: Colors.white38,
                         ),
                         onPressed: () {
                           setState(() {
@@ -160,12 +183,12 @@ class _LoginPageState extends State<LoginPage> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () {
-                        RouteGenerator.navigateToPage(
-                          context,
-                          Routes.forgotPasswordRoute,
-                        );
+                        RouteGenerator.navigateToPage(context, Routes.forgotPasswordRoute);
                       },
-                      child: const Text("Forgot Password?"),
+                      child: const Text(
+                        "Forgot Password?", 
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
                     ),
                   ),
 
@@ -177,6 +200,9 @@ class _LoginPageState extends State<LoginPage> {
                     height: 50,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryColor,
+                        foregroundColor: Colors.white,
+                        elevation: 5,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
                         ),
@@ -228,13 +254,13 @@ class _LoginPageState extends State<LoginPage> {
                       child: OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           side: BorderSide(
-                            color: isBiometricEnabled ? const Color(0xFFe2b96f) : Colors.white24,
+                            color: isBiometricEnabled ? AppColors.secondaryColor : Colors.white24,
                             width: 1.5,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30),
                           ),
-                          foregroundColor: isBiometricEnabled ? const Color(0xFFe2b96f) : Colors.white54,
+                          foregroundColor: isBiometricEnabled ? AppColors.secondaryColor : Colors.white54,
                         ),
                         icon: const Icon(Icons.fingerprint, size: 28),
                         label: const Text(
@@ -263,19 +289,18 @@ class _LoginPageState extends State<LoginPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text("Don't have an account? "),
+                      const Text("Don't have an account? ", style: TextStyle(color: Colors.white70)),
                       GestureDetector(
                         onTap: () {
-                          RouteGenerator.navigateToPage(
-                            context,
-                            Routes.signupRoute,
-                          );
+                          RouteGenerator.navigateToPage(context, Routes.signupRoute);
                         },
                         child: const Text(
                           "Sign up",
                           style: TextStyle(
+                            color: AppColors.secondaryColor,
                             fontWeight: FontWeight.bold,
                             decoration: TextDecoration.underline,
+                            decorationColor: AppColors.secondaryColor,
                           ),
                         ),
                       ),
@@ -453,7 +478,12 @@ Widget _buildLabel(String text) {
     alignment: Alignment.centerLeft,
     child: Text(
       text,
-      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      style: const TextStyle(
+        fontWeight: FontWeight.bold, 
+        fontSize: 13, 
+        color: AppColors.textSecondary,
+        letterSpacing: 1.1,
+      ),
     ),
   );
 }

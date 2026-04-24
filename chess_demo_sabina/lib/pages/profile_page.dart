@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
+import '../utils/color_utils.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -138,12 +139,12 @@ class _ProfilePageState extends State<ProfilePage>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF1a1a2e), Color(0xFF16213e), Color(0xFF0f3460)],
+            colors: AppColors.woodGradient,
           ),
         ),
         child: isLoading
             ? const Center(
-                child: CircularProgressIndicator(color: Color(0xFFe2b96f)),
+                child: CircularProgressIndicator(color: AppColors.secondaryColor),
               )
             : SafeArea(
                 child: Column(
@@ -187,7 +188,7 @@ class _ProfilePageState extends State<ProfilePage>
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFe2b96f), Color(0xFFc9973a)],
+                  colors: [AppColors.primaryColor, AppColors.secondaryColor],
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -241,10 +242,10 @@ class _ProfilePageState extends State<ProfilePage>
       child: TabBar(
         controller: _tabController,
         indicator: BoxDecoration(
-          color: const Color(0xFFe2b96f),
+          color: AppColors.secondaryColor,
           borderRadius: BorderRadius.circular(12),
         ),
-        labelColor: const Color(0xFF1a1a2e),
+        labelColor: AppColors.backgroundColor,
         unselectedLabelColor: Colors.white54,
         labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         dividerColor: Colors.transparent,
@@ -316,7 +317,7 @@ class _ProfilePageState extends State<ProfilePage>
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                 ),
               ),
             ],
@@ -499,10 +500,10 @@ class _ProfilePageState extends State<ProfilePage>
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFe2b96f).withOpacity(0.15),
+              color: AppColors.primaryColor.withOpacity(0.15),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: const Color(0xFFe2b96f), size: 22),
+            child: Icon(icon, color: AppColors.secondaryColor, size: 22),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -528,8 +529,8 @@ class _ProfilePageState extends State<ProfilePage>
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFFe2b96f),
-            activeTrackColor: const Color(0xFFe2b96f).withOpacity(0.3),
+            activeColor: AppColors.secondaryColor,
+            activeTrackColor: AppColors.secondaryColor.withOpacity(0.3),
             inactiveThumbColor: Colors.white38,
             inactiveTrackColor: Colors.white12,
           ),
@@ -606,7 +607,7 @@ class _ProfilePageState extends State<ProfilePage>
       style: const TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w700,
-        color: Color(0xFFe2b96f),
+        color: AppColors.secondaryColor,
         letterSpacing: 1.2,
       ),
     );

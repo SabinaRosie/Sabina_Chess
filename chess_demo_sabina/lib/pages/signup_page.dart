@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
 import '../services/api_service.dart';
+import '../utils/color_utils.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -96,8 +97,17 @@ class _SignupPageState extends State<SignupPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
+      backgroundColor: AppColors.backgroundColor,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: AppColors.woodGradient,
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Form(
@@ -109,7 +119,7 @@ class _SignupPageState extends State<SignupPage> {
                   // 🔹 Title
                   Text(
                     step == 0 ? "Create Account" : "Verify Email",
-                    style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                   ),
 
                   const SizedBox(height: 20),
@@ -118,7 +128,7 @@ class _SignupPageState extends State<SignupPage> {
                       ? "Join the chess community today!" 
                       : "We've sent a 6-digit code to $email",
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey),
+                    style: const TextStyle(color: AppColors.textSecondary),
                   ),
 
                   const SizedBox(height: 40),
@@ -233,6 +243,8 @@ class _SignupPageState extends State<SignupPage> {
                     height: 55,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryColor,
+                        foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                         elevation: 5,
                       ),
@@ -291,7 +303,10 @@ class _SignupPageState extends State<SignupPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(step == 0 ? "Already have an account? " : "Entered wrong email? "),
+                      Text(
+                        step == 0 ? "Already have an account? " : "Entered wrong email? ",
+                        style: const TextStyle(color: Colors.white70),
+                      ),
                       GestureDetector(
                         onTap: () {
                           if (step == 0) {
@@ -303,8 +318,10 @@ class _SignupPageState extends State<SignupPage> {
                         child: Text(
                           step == 0 ? "Login" : "Change Email",
                           style: const TextStyle(
+                            color: AppColors.secondaryColor,
                             fontWeight: FontWeight.bold,
                             decoration: TextDecoration.underline,
+                            decorationColor: AppColors.secondaryColor,
                           ),
                         ),
                       ),
@@ -327,7 +344,12 @@ class _SignupPageState extends State<SignupPage> {
       alignment: Alignment.centerLeft,
       child: Text(
         text,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        style: const TextStyle(
+          fontWeight: FontWeight.bold, 
+          fontSize: 13, 
+          color: AppColors.textSecondary,
+          letterSpacing: 1.1,
+        ),
       ),
     );
   }
@@ -336,8 +358,18 @@ class _SignupPageState extends State<SignupPage> {
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
+      hintStyle: const TextStyle(color: Colors.white38),
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.05),
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(30),
+        borderSide: const BorderSide(color: Colors.white12),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(30),
+        borderSide: const BorderSide(color: AppColors.secondaryColor),
+      ),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dashboard_page.dart';
 import 'profile_page.dart';
 import 'users_list_page.dart';
+import '../utils/color_utils.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -26,7 +27,7 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF1a1a2e), Color(0xFF0f3460)],
+            colors: AppColors.woodGradient,
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -41,8 +42,8 @@ class _HomePageState extends State<HomePage> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           backgroundColor: Colors.transparent,
-          selectedItemColor: const Color(0xFFe2b96f),
-          unselectedItemColor: Colors.white38,
+          selectedItemColor: AppColors.secondaryColor,
+          unselectedItemColor: Colors.white24,
           elevation: 0,
           onTap: (index) {
             setState(() {
