@@ -221,24 +221,43 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 20),
 
                   // ================= FINGERPRINT LOGIN =================
-                  IconButton(
-                    icon: Icon(
-                      Icons.fingerprint,
-                      size: 60,
-                      color: isBiometricEnabled ? Colors.green : Colors.grey,
+                  if (isBiometricAvailable)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: isBiometricEnabled ? const Color(0xFFe2b96f) : Colors.white24,
+                            width: 1.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          foregroundColor: isBiometricEnabled ? const Color(0xFFe2b96f) : Colors.white54,
+                        ),
+                        icon: const Icon(Icons.fingerprint, size: 28),
+                        label: const Text(
+                          "Login with Fingerprint",
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        onPressed: () {
+                          if (isBiometricEnabled) {
+                            _loginWithBiometric();
+                          } else {
+                            _showBiometricNotEnabledDialog(context);
+                          }
+                        },
+                      ),
                     ),
-                    onPressed: () {
-                      if (isBiometricEnabled) {
-                        _loginWithBiometric();
-                      } else {
-                        _showBiometricNotEnabledDialog(context);
-                      }
-                    },
-                  ),
+                  
                   if (isBiometricEnabled)
-                    const Text("Fingerprint Enabled", style: TextStyle(color: Colors.green, fontSize: 12)),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: Text("Biometric login is active", style: TextStyle(color: Colors.green, fontSize: 13)),
+                    ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
 
                   // ================= SIGNUP LINK =================
                   Row(
