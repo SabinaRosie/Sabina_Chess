@@ -75,21 +75,25 @@ class _SignupPageState extends State<SignupPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
+        ),
         title: const Row(
           children: [
             Icon(Icons.error_outline, color: Colors.redAccent),
             SizedBox(width: 10),
-            Text("Error"),
+            Text("Error", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text(message),
+        content: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               "OK",
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondaryColor),
             ),
           ),
         ],
@@ -145,6 +149,7 @@ class _SignupPageState extends State<SignupPage> {
                       _buildLabel("NAME"),
                       const SizedBox(height: 4),
                       TextFormField(
+                        style: const TextStyle(color: Colors.white),
                         onChanged: (value) => name = value,
                         validator: (value) {
                           if (value == null || value.isEmpty)
@@ -161,6 +166,7 @@ class _SignupPageState extends State<SignupPage> {
                       _buildLabel("EMAIL ADDRESS"),
                       const SizedBox(height: 4),
                       TextFormField(
+                        style: const TextStyle(color: Colors.white),
                         onChanged: (value) => email = value.trim(),
                         validator: (value) {
                           if (value == null || value.isEmpty)
@@ -177,6 +183,7 @@ class _SignupPageState extends State<SignupPage> {
                       _buildLabel("PASSWORD"),
                       const SizedBox(height: 4),
                       TextFormField(
+                        style: const TextStyle(color: Colors.white),
                         obscureText: !showPassword,
                         onChanged: (value) => password = value,
                         validator: (value) {
@@ -191,6 +198,7 @@ class _SignupPageState extends State<SignupPage> {
                               showPassword
                                   ? Icons.visibility
                                   : Icons.visibility_off,
+                              color: Colors.white38,
                             ),
                             onPressed: () =>
                                 setState(() => showPassword = !showPassword),
@@ -204,6 +212,7 @@ class _SignupPageState extends State<SignupPage> {
                       _buildLabel("CONFIRM PASSWORD"),
                       const SizedBox(height: 4),
                       TextFormField(
+                        style: const TextStyle(color: Colors.white),
                         obscureText: !showConfirmPassword,
                         onChanged: (value) => confirmPassword = value,
                         validator: (value) {
@@ -220,6 +229,7 @@ class _SignupPageState extends State<SignupPage> {
                                   showConfirmPassword
                                       ? Icons.visibility
                                       : Icons.visibility_off,
+                                  color: Colors.white38,
                                 ),
                                 onPressed: () => setState(
                                   () => showConfirmPassword =
@@ -237,6 +247,7 @@ class _SignupPageState extends State<SignupPage> {
                         maxLength: 6,
                         onChanged: (value) => otp = value.trim(),
                         style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 24,
                           letterSpacing: 8,
                           fontWeight: FontWeight.bold,
@@ -313,22 +324,18 @@ class _SignupPageState extends State<SignupPage> {
                               if (context.mounted) {
                                 setState(() => loader = false);
                                 if (result['success']) {
-                                  // 🔹 Save tokens and go to Home (Verification Removed)
-                                  final prefs =
-                                      await SharedPreferences.getInstance();
-                                  await prefs.setString(
-                                    'accessToken',
-                                    result['data']['access'],
-                                  );
-                                  await prefs.setString(
-                                    'refreshToken',
-                                    result['data']['refresh'],
-                                  );
-
+                                  // 🔹 Account created — redirect to login page
                                   if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Account created successfully! Please login.'),
+                                        backgroundColor: Colors.green,
+                                        duration: Duration(seconds: 3),
+                                      ),
+                                    );
                                     RouteGenerator.navigateToPageWithoutStack(
                                       context,
-                                      Routes.homeRoute,
+                                      Routes.loginRoute,
                                     );
                                   }
                                 } else {

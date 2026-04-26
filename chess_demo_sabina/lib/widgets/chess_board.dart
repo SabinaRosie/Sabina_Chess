@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/board.dart';
 import '../models/piece.dart';
+import '../utils/color_utils.dart';
 import 'square.dart';
 
 class ChessBoardWidget extends StatefulWidget {
@@ -41,9 +42,26 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget> {
           if (board.gameOver) {
             showDialog(
               context: context,
-              builder: (_) => const AlertDialog(
-                title: Text("Game Over"),
-                content: Text("King captured!"),
+              builder: (_) => AlertDialog(
+                backgroundColor: AppColors.surfaceColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(color: AppColors.secondaryColor.withOpacity(0.3)),
+                ),
+                title: const Row(
+                  children: [
+                    Icon(Icons.emoji_events_rounded, color: AppColors.secondaryColor, size: 28),
+                    SizedBox(width: 10),
+                    Text("Game Over", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                content: const Text("King captured!", style: TextStyle(color: AppColors.textSecondary)),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("OK", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+                  ),
+                ],
               ),
             );
           }

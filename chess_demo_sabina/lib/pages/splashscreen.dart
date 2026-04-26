@@ -72,10 +72,10 @@ class _SplashScreenState extends State<SplashScreen> {
                 },
               ),
             ),
-            const Align(
+            Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
-                padding: EdgeInsets.only(bottom: 40.0),
+                padding: const EdgeInsets.only(bottom: 40.0),
                 child: CircularProgressIndicator(
                   color: AppColors.secondaryColor.withOpacity(0.5),
                   strokeWidth: 2,

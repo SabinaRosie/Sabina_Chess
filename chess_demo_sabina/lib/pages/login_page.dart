@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
 import '../services/api_service.dart';
@@ -20,6 +21,7 @@ class _LoginPageState extends State<LoginPage> {
   bool loader = false;
 
   final localAuth = LocalAuthentication();
+  final secureStorage = const FlutterSecureStorage();
   bool isBiometricAvailable = false;
   bool isBiometricEnabled = false;
 
@@ -39,15 +41,11 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _checkExistingSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    isBiometricEnabled = prefs.getBool('isBiometricEnabled') ?? false;
-
-    // Auto-trigger biometric if enabled
-    if (isBiometricEnabled) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _loginWithBiometric();
-      });
-    }
+    // Check if biometric credentials are actually stored (not just the flag)
+    final storedBioUser = await secureStorage.read(key: 'bio_username');
+    setState(() {
+      isBiometricEnabled = storedBioUser != null;
+    });
   }
 
   bool isValidUsername(String username) {
@@ -253,14 +251,19 @@ class _LoginPageState extends State<LoginPage> {
                                   username!,
                                 );
 
-                                // 🔹 Check if biometric setup is needed
-                                if (!isBiometricEnabled &&
+                                // 🔹 Check if biometric setup is needed for THIS user
+                                final storedBioUser = await secureStorage.read(key: 'bio_username');
+                                final biometricSetForThisUser = storedBioUser == username;
+
+                                if (!biometricSetForThisUser &&
                                     isBiometricAvailable &&
                                     context.mounted) {
                                   _showEnableBiometricDialog(
                                     context,
                                     result['data']['access'],
                                     result['data']['refresh'],
+                                    username!,
+                                    password!,
                                   );
                                 } else {
                                   RouteGenerator.navigateToPageWithoutStack(
@@ -389,11 +392,12 @@ class _LoginPageState extends State<LoginPage> {
       if (didAuth && context.mounted) {
         final prefs = await SharedPreferences.getInstance();
         final accessToken = prefs.getString('bio_access_token');
+        final refreshToken = prefs.getString('bio_refresh_token');
+
+        // 1. Try with existing access token first
         if (accessToken != null) {
-          // Validate token by fetching profile
           final result = await ApiService.getProfile(accessToken);
           if (result['success'] && context.mounted) {
-            // Restore session
             await prefs.setString('accessToken', accessToken);
             RouteGenerator.navigateToPageWithoutStack(
               context,
@@ -402,11 +406,50 @@ class _LoginPageState extends State<LoginPage> {
             return;
           }
         }
+
+        // 2. Access token expired — try refreshing it
+        if (refreshToken != null) {
+          final refreshResult = await ApiService.refreshToken(refreshToken);
+          if (refreshResult['success'] && context.mounted) {
+            final newAccess = refreshResult['data']['access'];
+            await prefs.setString('bio_access_token', newAccess);
+            await prefs.setString('accessToken', newAccess);
+            RouteGenerator.navigateToPageWithoutStack(
+              context,
+              Routes.homeRoute,
+            );
+            return;
+          }
+        }
+
+        // 3. Both tokens expired — use stored credentials for fresh login
+        final storedUsername = await secureStorage.read(key: 'bio_username');
+        final storedPassword = await secureStorage.read(key: 'bio_password');
+
+        if (storedUsername != null && storedPassword != null) {
+          final loginResult = await ApiService.login(storedUsername, storedPassword);
+          if (loginResult['success'] && context.mounted) {
+            final newAccess = loginResult['data']['access'];
+            final newRefresh = loginResult['data']['refresh'];
+            // Update stored tokens for next time
+            await prefs.setString('bio_access_token', newAccess);
+            await prefs.setString('bio_refresh_token', newRefresh);
+            await prefs.setString('accessToken', newAccess);
+            await prefs.setString('refreshToken', newRefresh);
+            RouteGenerator.navigateToPageWithoutStack(
+              context,
+              Routes.homeRoute,
+            );
+            return;
+          }
+        }
+
+        // 4. Nothing worked — credentials invalid (e.g. password changed)
         if (context.mounted) {
           _showMessageDialog(
             context,
-            "Session Expired",
-            "Your biometric session has expired. Please login with your password once to restore it.",
+            "Login Failed",
+            "Could not authenticate. Please login with your password to re-enable fingerprint.",
           );
         }
       }
@@ -420,23 +463,28 @@ class _LoginPageState extends State<LoginPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.secondaryColor.withOpacity(0.3)),
+        ),
         title: const Row(
           children: [
-            Icon(Icons.fingerprint, color: Colors.blueAccent),
+            Icon(Icons.fingerprint, color: AppColors.secondaryColor),
             SizedBox(width: 10),
-            Text("Enable Fingerprint"),
+            Text("Enable Fingerprint", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
           ],
         ),
         content: const Text(
           "To use fingerprint login, please log in manually with your username and password once first. \n\nAfter logging in, you'll be asked if you want to enable it!",
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               "Got it",
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondaryColor),
             ),
           ),
         ],
@@ -449,14 +497,22 @@ class _LoginPageState extends State<LoginPage> {
     BuildContext context,
     String accessToken,
     String refreshToken,
+    String loginUsername,
+    String loginPassword,
   ) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text("Enable Fingerprint?"),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.secondaryColor.withOpacity(0.3)),
+        ),
+        title: const Text("Enable Fingerprint?", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
         content: const Text(
           "Use your fingerprint for secure and fast login next time.",
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
@@ -467,9 +523,14 @@ class _LoginPageState extends State<LoginPage> {
                 Routes.homeRoute,
               );
             },
-            child: const Text("Skip"),
+            child: const Text("Skip", style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.secondaryColor,
+              foregroundColor: AppColors.backgroundColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
             onPressed: () async {
               // 1. Mandatory biometric scan before enabling
               bool didAuth = await localAuth.authenticate(
@@ -486,6 +547,10 @@ class _LoginPageState extends State<LoginPage> {
                 await prefs.setString('bio_access_token', accessToken);
                 await prefs.setString('bio_refresh_token', refreshToken);
                 await prefs.setBool('isBiometricEnabled', true);
+
+                // 3. Store credentials securely for persistent biometric login
+                await secureStorage.write(key: 'bio_username', value: loginUsername);
+                await secureStorage.write(key: 'bio_password', value: loginPassword);
 
                 if (context.mounted) {
                   Navigator.pop(context);
@@ -513,21 +578,25 @@ class _LoginPageState extends State<LoginPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
+        ),
         title: const Row(
           children: [
             Icon(Icons.error_outline_rounded, color: Colors.redAccent),
             SizedBox(width: 10),
-            Text("Error"),
+            Text("Error", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text(message),
+        content: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               "OK",
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondaryColor),
             ),
           ),
         ],
@@ -540,21 +609,25 @@ class _LoginPageState extends State<LoginPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.secondaryColor.withOpacity(0.3)),
+        ),
         title: Row(
           children: [
-            const Icon(Icons.info_outline, color: Colors.blueAccent),
+            const Icon(Icons.info_outline, color: AppColors.secondaryColor),
             const SizedBox(width: 10),
-            Text(title),
+            Text(title, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text(message),
+        content: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               "OK",
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondaryColor),
             ),
           ),
         ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/api_service.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
@@ -19,6 +20,7 @@ class _ProfilePageState extends State<ProfilePage>
   String? email;
   bool isLoading = true;
   final LocalAuthentication auth = LocalAuthentication();
+  final FlutterSecureStorage secureStorage = const FlutterSecureStorage();
 
   // Settings state
   bool _biometricEnabled = false;
@@ -63,8 +65,9 @@ class _ProfilePageState extends State<ProfilePage>
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final storedBioUser = await secureStorage.read(key: 'bio_username');
     setState(() {
-      _biometricEnabled = prefs.getBool('isBiometricEnabled') ?? false;
+      _biometricEnabled = storedBioUser != null;
       _soundEnabled = prefs.getBool('soundEnabled') ?? true;
       _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
     });
@@ -97,22 +100,28 @@ class _ProfilePageState extends State<ProfilePage>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1e2a45),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Logout',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.logout_rounded, color: Colors.redAccent, size: 24),
+            SizedBox(width: 10),
+            Text('Logout', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+          ],
         ),
         content: const Text(
           'Are you sure you want to log out?',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: AppColors.textSecondary),
             ),
           ),
           ElevatedButton(
@@ -440,9 +449,15 @@ class _ProfilePageState extends State<ProfilePage>
                   }
                 }
               } else {
-                // Disabling fingerprint
+                // Disabling fingerprint — clear stored credentials
+                await secureStorage.delete(key: 'bio_username');
+                await secureStorage.delete(key: 'bio_password');
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove('bio_access_token');
+                await prefs.remove('bio_refresh_token');
+                await prefs.remove('isBiometricEnabled');
+
                 setState(() => _biometricEnabled = false);
-                await _saveSetting('isBiometricEnabled', false);
                 if (mounted) {
                   _showMessageDialog(
                     context,
@@ -664,21 +679,25 @@ class _ProfilePageState extends State<ProfilePage>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
+        ),
         title: const Row(
           children: [
             Icon(Icons.error_outline_rounded, color: Colors.redAccent),
             SizedBox(width: 10),
-            Text("Error"),
+            Text("Error", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text(message),
+        content: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               "OK",
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondaryColor),
             ),
           ),
         ],
@@ -690,15 +709,19 @@ class _ProfilePageState extends State<ProfilePage>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.secondaryColor.withOpacity(0.3)),
+        ),
         title: Row(
           children: [
-            const Icon(Icons.info_outline, color: Color(0xFFe2b96f)),
+            const Icon(Icons.info_outline, color: AppColors.secondaryColor),
             const SizedBox(width: 10),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
           ],
         ),
-        content: Text(message),
+        content: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -706,7 +729,7 @@ class _ProfilePageState extends State<ProfilePage>
               "OK",
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: Color(0xFFe2b96f),
+                color: AppColors.secondaryColor,
               ),
             ),
           ),

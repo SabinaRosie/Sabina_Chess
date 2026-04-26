@@ -119,6 +119,20 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> refreshToken(String refreshToken) async {
+    final url = Uri.parse('${AppConstants.baseUrl}/token/refresh');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh': refreshToken}),
+      );
+      return _handleResponse(response, 'Token refresh failed');
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
   static Future<Map<String, dynamic>> getProfile(String accessToken) async {
     final url = Uri.parse('${AppConstants.baseUrl}/profile');
     try {

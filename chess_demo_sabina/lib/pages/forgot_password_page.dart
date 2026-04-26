@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
+import '../utils/color_utils.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -51,18 +52,31 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Reset Password"),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.pop(context),
+      backgroundColor: AppColors.backgroundColor,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: AppColors.woodGradient,
+          ),
         ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Form(
+        child: Column(
+          children: [
+            AppBar(
+              title: const Text("Reset Password", style: TextStyle(color: AppColors.textPrimary)),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -75,7 +89,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         ? Icons.lock_clock_outlined
                         : Icons.lock_reset_rounded,
                     size: 80,
-                    color: Colors.blueAccent,
+                    color: AppColors.secondaryColor,
                   ),
                   const SizedBox(height: 30),
                   Text(
@@ -85,8 +99,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         ? "Enter OTP"
                         : "New Password",
                     style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 26,
                       fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -97,7 +112,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         ? "Enter the 6-digit code sent to $email"
                         : "Almost there! Create a strong new password for your account.",
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey, fontSize: 16),
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 15),
                   ),
                   const SizedBox(height: 40),
 
@@ -105,14 +120,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     _buildLabel("EMAIL ADDRESS"),
                     const SizedBox(height: 8),
                     TextFormField(
-                      decoration: _inputDecoration(
-                        "Enter email",
-                        Icons.mail_outline,
-                      ),
+                      decoration: _inputDecoration("Enter email", Icons.mail_outline),
+                      style: const TextStyle(color: Colors.white),
                       onChanged: (val) => email = val.trim(),
-                      validator: (val) => val != null && val.contains("@")
-                          ? null
-                          : "Enter valid email",
+                      validator: (val) => val != null && val.contains("@") ? null : "Enter valid email",
                     ),
                   ] else if (step == 1) ...[
                     _buildLabel("VERIFICATION CODE"),
@@ -125,6 +136,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 8,
+                        color: Colors.white,
                       ),
                       decoration: _inputDecoration(
                         "000000",
@@ -140,9 +152,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          _canResend
-                              ? "Didn't receive code? "
-                              : "Resend code in ",
+                          _canResend ? "Didn't receive code? " : "Resend code in ",
+                          style: const TextStyle(color: Colors.white70),
                         ),
                         if (_canResend)
                           GestureDetector(
@@ -176,11 +187,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                             Icons.lock_outline,
                           ).copyWith(
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                showPassword
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                              ),
+                                icon: Icon(
+                                  showPassword ? Icons.visibility : Icons.visibility_off,
+                                  color: Colors.white38,
+                                ),
                               onPressed: () =>
                                   setState(() => showPassword = !showPassword),
                             ),
@@ -199,10 +209,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     height: 55,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        elevation: 4,
+                        backgroundColor: AppColors.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                        elevation: 5,
                       ),
                       onPressed: () async {
                         if (_formKey.currentState!.validate()) {
@@ -237,11 +247,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
                           if (context.mounted) {
                             setState(() => loader = false);
-                            if (result != null && !result['success']) {
+                            if (!result['success']) {
                               _showErrorDialog(
                                 context,
-                                result['error'] ??
-                                    'An unexpected error occurred',
+                                result['error'] ?? 'An unexpected error occurred',
                               );
                             }
                           }
@@ -269,13 +278,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       onPressed: () => setState(() => step = 0),
                       child: const Text(
                         "Entered wrong email? Change it",
-                        style: TextStyle(color: Colors.grey),
+                        style: TextStyle(color: AppColors.textSecondary),
                       ),
                     ),
                 ],
               ),
             ),
           ),
+        ),
+            ),
+          ],
         ),
       ),
     );
@@ -289,7 +301,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         style: const TextStyle(
           fontWeight: FontWeight.bold,
           fontSize: 13,
-          color: Colors.blueGrey,
+          color: AppColors.textSecondary,
         ),
       ),
     );
@@ -298,11 +310,19 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   InputDecoration _inputDecoration(String hint, IconData? icon) {
     return InputDecoration(
       hintText: hint,
-      prefixIcon: icon != null ? Icon(icon, size: 20) : null,
+      hintStyle: const TextStyle(color: Colors.white38),
+      prefixIcon: icon != null ? Icon(icon, size: 20, color: AppColors.secondaryColor) : null,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(color: Colors.white12),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(color: AppColors.secondaryColor),
+      ),
       filled: true,
-      fillColor: Colors.grey.withOpacity(0.05),
+      fillColor: Colors.white.withOpacity(0.05),
     );
   }
 
@@ -310,19 +330,23 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
+        ),
         title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
             SizedBox(width: 10),
-            Text("Verification failed"),
+            Text("Verification failed", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text(message),
+        content: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Try Again"),
+            child: const Text("Try Again", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -333,17 +357,26 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.green.withOpacity(0.3)),
+        ),
         title: const Row(
           children: [
             Icon(Icons.check_circle_outline, color: Colors.green),
             SizedBox(width: 10),
-            Text("Success"),
+            Text("Success", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text(message),
+        content: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.secondaryColor,
+              foregroundColor: AppColors.backgroundColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
             onPressed: () {
               Navigator.pop(context);
               RouteGenerator.navigateToPageWithoutStack(
