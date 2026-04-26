@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/api_service.dart';
 import '../services/signaling_service.dart';
@@ -20,6 +21,8 @@ class _UsersListPageState extends State<UsersListPage> {
   String? error;
   String? _accessToken;
   Timer? _incomingCallTimer;
+  final AudioPlayer _ringtonePlayer = AudioPlayer();
+  static const String ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3';
 
   @override
   void initState() {
@@ -37,6 +40,7 @@ class _UsersListPageState extends State<UsersListPage> {
   @override
   void dispose() {
     _incomingCallTimer?.cancel();
+    _ringtonePlayer.dispose();
     super.dispose();
   }
 
@@ -69,6 +73,10 @@ class _UsersListPageState extends State<UsersListPage> {
     required String callerName,
     required String callType,
   }) {
+    // 🔊 Start Ringtone
+    _ringtonePlayer.setReleaseMode(ReleaseMode.loop);
+    _ringtonePlayer.play(UrlSource(ringtoneUrl));
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -133,6 +141,7 @@ class _UsersListPageState extends State<UsersListPage> {
           // Reject
           GestureDetector(
             onTap: () async {
+              _ringtonePlayer.stop();
               Navigator.pop(ctx);
               await SignalingService.answerCall(
                 roomId,
@@ -158,6 +167,7 @@ class _UsersListPageState extends State<UsersListPage> {
           // Accept
           GestureDetector(
             onTap: () async {
+              _ringtonePlayer.stop();
               Navigator.pop(ctx);
               await SignalingService.answerCall(
                 roomId,

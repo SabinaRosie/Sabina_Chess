@@ -433,17 +433,19 @@ class _LoginPageState extends State<LoginPage> {
         final accessToken = prefs.getString('bio_access_token');
         final refreshToken = prefs.getString('bio_refresh_token');
 
-        // 1. Try with existing access token first
-        if (accessToken != null) {
-          final result = await ApiService.getProfile(accessToken);
-          if (result['success'] && context.mounted) {
-            await prefs.setString('accessToken', accessToken);
+        // 🔹 Since we now have long-lived tokens (10 years), 
+        // we can trust the stored token and navigate immediately for instant login.
+        if (accessToken != null && refreshToken != null) {
+          await prefs.setString('accessToken', accessToken);
+          await prefs.setString('refreshToken', refreshToken);
+          
+          if (context.mounted) {
             RouteGenerator.navigateToPageWithoutStack(
               context,
               Routes.homeRoute,
             );
-            return;
           }
+          return;
         }
 
         // 2. Access token expired — try refreshing it
