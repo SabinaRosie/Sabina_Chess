@@ -48,9 +48,9 @@ class _UsersListPageState extends State<UsersListPage> {
   }
 
   Future<void> _checkIncomingCalls() async {
-    if (_accessToken == null || !mounted) return;
+    if (!mounted) return;
 
-    final result = await SignalingService.checkIncoming(_accessToken!);
+    final result = await SignalingService.checkIncoming();
     if (!result['success'] || !mounted) return;
 
     final data = result['data'];
@@ -135,7 +135,6 @@ class _UsersListPageState extends State<UsersListPage> {
             onTap: () async {
               Navigator.pop(ctx);
               await SignalingService.answerCall(
-                _accessToken!,
                 roomId,
                 'reject',
               );
@@ -161,7 +160,6 @@ class _UsersListPageState extends State<UsersListPage> {
             onTap: () async {
               Navigator.pop(ctx);
               await SignalingService.answerCall(
-                _accessToken!,
                 roomId,
                 'accept',
               );
@@ -248,7 +246,6 @@ class _UsersListPageState extends State<UsersListPage> {
 
     // Create call on server
     final result = await SignalingService.createCall(
-      _accessToken!,
       username,
       callType,
     );

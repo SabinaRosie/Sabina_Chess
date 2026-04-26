@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
 import '../utils/color_utils.dart';
@@ -16,9 +17,22 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
 
-    Timer(const Duration(seconds: 3), () {
+    Timer(const Duration(seconds: 3), () async {
+      if (!mounted) return;
+
+      // Check if user chose "Remember Me" on last login
+      final prefs = await SharedPreferences.getInstance();
+      final isRemembered = prefs.getBool('isRemembered') ?? false;
+      final hasToken = prefs.getString('accessToken') != null;
+
       if (mounted) {
-        RouteGenerator.navigateToPageWithoutStack(context, Routes.loginRoute);
+        if (isRemembered && hasToken) {
+          // Auto-login: go straight to home
+          RouteGenerator.navigateToPageWithoutStack(context, Routes.homeRoute);
+        } else {
+          // Not remembered: go to login
+          RouteGenerator.navigateToPageWithoutStack(context, Routes.loginRoute);
+        }
       }
     });
   }

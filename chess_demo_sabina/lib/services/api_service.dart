@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/const.dart';
 
 class ApiService {
@@ -183,5 +185,50 @@ class ApiService {
     } catch (e) {
       return {'success': false, 'error': e.toString()};
     }
+  }
+
+  /// 🔹 Helper to get a valid access token, refreshing it if needed
+  static Future<String?> getValidToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? accessToken = prefs.getString('accessToken');
+
+    if (accessToken == null) return null;
+
+    // Check if token is expired (JWT is base64 encoded JSON)
+    try {
+      final parts = accessToken.split('.');
+      if (parts.length == 3) {
+        final payload = json.decode(
+          utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+        );
+        final exp = payload['exp'] as int?;
+        if (exp != null) {
+          final expiryDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+          // If expires in less than 30 seconds, refresh now
+          if (expiryDate.isBefore(DateTime.now().add(const Duration(seconds: 30)))) {
+            return await forceRefreshToken();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Token parse error: $e');
+    }
+    
+    return accessToken;
+  }
+
+  /// 🔹 Force refresh the token and save it
+  static Future<String?> forceRefreshToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final refresh = prefs.getString('refreshToken');
+    if (refresh == null) return null;
+
+    final result = await refreshToken(refresh);
+    if (result['success']) {
+      final newAccess = result['data']['access'];
+      await prefs.setString('accessToken', newAccess);
+      return newAccess;
+    }
+    return null;
   }
 }

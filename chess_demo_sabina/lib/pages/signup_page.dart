@@ -41,6 +41,20 @@ class _SignupPageState extends State<SignupPage> {
     return regex.hasMatch(password);
   }
 
+  // 🔹 Detailed password feedback
+  String? getPasswordError(String password) {
+    if (password.isEmpty) return 'Enter password';
+    List<String> missing = [];
+    if (password.length < 6) missing.add('• At least 6 characters');
+    if (!RegExp(r'[A-Z]').hasMatch(password)) missing.add('• An uppercase letter');
+    if (!RegExp(r'[a-z]').hasMatch(password)) missing.add('• A lowercase letter');
+    if (!RegExp(r'\d').hasMatch(password)) missing.add('• A number');
+    if (!RegExp(r'[-_@#$%^&+=]').hasMatch(password)) missing.add('• A special character (-_@#\$%^&+=)');
+    
+    if (missing.isEmpty) return null;
+    return 'Password must contain:\n${missing.join('\n')}';
+  }
+
   // 🔹 Name validation (letters + numbers allowed, but not only numbers)
   bool isValidName(String name) {
     final regex = RegExp(r'^(?!\d+$)[a-zA-Z0-9 ]+$');
@@ -187,12 +201,13 @@ class _SignupPageState extends State<SignupPage> {
                         obscureText: !showPassword,
                         onChanged: (value) => password = value,
                         validator: (value) {
-                          if (value == null || value.isEmpty)
-                            return "Enter password";
-                          if (!isValidPassword(value)) return "Weak password";
-                          return null;
+                          if (value == null || value.isEmpty) {
+                            return 'Enter password';
+                          }
+                          return getPasswordError(value);
                         },
                         decoration: _inputDecoration("Enter password").copyWith(
+                          errorMaxLines: 10,
                           suffixIcon: IconButton(
                             icon: Icon(
                               showPassword

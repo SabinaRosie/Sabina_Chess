@@ -19,6 +19,7 @@ class _LoginPageState extends State<LoginPage> {
   String? username, password;
   bool showPassword = false;
   bool loader = false;
+  bool _rememberMe = false;
 
   final localAuth = LocalAuthentication();
   final secureStorage = const FlutterSecureStorage();
@@ -187,23 +188,58 @@ class _LoginPageState extends State<LoginPage> {
                       },
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 6),
 
-                    // 🔹 Forgot Password
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {
-                          RouteGenerator.navigateToPage(
-                            context,
-                            Routes.forgotPasswordRoute,
-                          );
-                        },
-                        child: const Text(
-                          "Forgot Password?",
-                          style: TextStyle(color: AppColors.textSecondary),
+                    // 🔹 Remember Me + Forgot Password row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Remember Me
+                        GestureDetector(
+                          onTap: () => setState(() => _rememberMe = !_rememberMe),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: Checkbox(
+                                  value: _rememberMe,
+                                  onChanged: (val) => setState(() => _rememberMe = val ?? false),
+                                  activeColor: AppColors.secondaryColor,
+                                  checkColor: Colors.white,
+                                  side: const BorderSide(color: Colors.white38),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Remember me',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+
+                        // Forgot Password
+                        TextButton(
+                          onPressed: () {
+                            RouteGenerator.navigateToPage(
+                              context,
+                              Routes.forgotPasswordRoute,
+                            );
+                          },
+                          child: const Text(
+                            "Forgot Password?",
+                            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                          ),
+                        ),
+                      ],
                     ),
 
                     const SizedBox(height: 20),
@@ -250,6 +286,9 @@ class _LoginPageState extends State<LoginPage> {
                                   'last_username',
                                   username!,
                                 );
+
+                                // 🔹 Save Remember Me preference
+                                await prefs.setBool('isRemembered', _rememberMe);
 
                                 // 🔹 Check if biometric setup is needed for THIS user
                                 final storedBioUser = await secureStorage.read(key: 'bio_username');

@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/signaling_service.dart';
 import '../utils/color_utils.dart';
 
 class CallPage extends StatefulWidget {
-  final String roomId;
+  final String roomId; // This serves as the "Channel Name"
   final String remoteUsername;
   final String callType; // 'audio' or 'video'
   final bool isCaller;
@@ -23,32 +24,37 @@ class CallPage extends StatefulWidget {
   State<CallPage> createState() => _CallPageState();
 }
 
-class _CallPageState extends State<CallPage> with TickerProviderStateMixin {
+class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin {
   // WebRTC
   RTCPeerConnection? _peerConnection;
-  final _localRenderer = RTCVideoRenderer();
-  final _remoteRenderer = RTCVideoRenderer();
+  RTCVideoRenderer? _localRenderer;
+  RTCVideoRenderer? _remoteRenderer;
   MediaStream? _localStream;
-  MediaStream? _remoteStream;
 
   // UI State
   bool _isMuted = false;
   bool _isSpeakerOn = true;
   bool _isCameraOff = false;
   bool _isConnected = false;
-  bool _isConnecting = true;
-  String _callStatus = 'Connecting...';
+  String _callStatus = 'Initializing...';
   int _callDuration = 0;
+  bool _hasError = false;
+  bool _offerSent = false;
 
   // Signaling
   Timer? _signalPollTimer;
   Timer? _durationTimer;
-  String? _accessToken;
   bool _disposed = false;
+  bool _renderersInitialized = false;
+
+  // Audio UX
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  static const String ringingUrl = 'https://www.soundjay.com/phone/phone-calling-1.mp3';
+  static const String ringtoneUrl = 'https://www.soundjay.com/phone/telephone-ring-01a.mp3';
+  static const String beepUrl = 'https://www.soundjay.com/button/beep-07.mp3';
 
   // Animation
   late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
 
   // ICE Servers (Google's free STUN)
   final Map<String, dynamic> _iceServers = {
@@ -66,37 +72,109 @@ class _CallPageState extends State<CallPage> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    _initCall();
+    _joinChannel();
   }
 
-  Future<void> _initCall() async {
-    final prefs = await SharedPreferences.getInstance();
-    _accessToken = prefs.getString('accessToken');
+  /// 🔹 Agora-style: Initialize and Join Call
+  Future<void> _joinChannel() async {
+    try {
+      _setStatus('Joining channel...');
 
-    await _localRenderer.initialize();
-    await _remoteRenderer.initialize();
+      // Initialize renderers
+      _localRenderer = RTCVideoRenderer();
+      _remoteRenderer = RTCVideoRenderer();
+      await _localRenderer!.initialize();
+      await _remoteRenderer!.initialize();
+      _renderersInitialized = true;
 
-    await _createLocalStream();
-    await _createPeerConnection();
+      // Get local media stream
+      await _setupLocalMedia();
 
-    if (widget.isCaller) {
-      setState(() => _callStatus = 'Calling ${widget.remoteUsername}...');
-      await _createOffer();
-    } else {
-      setState(() => _callStatus = 'Connecting...');
+      if (_localStream == null) {
+        _setStatus('Could not access media');
+        _hasError = true;
+        return;
+      }
+
+      // Create peer connection
+      await _createPeerConnection();
+
+      if (_peerConnection == null) {
+        _setStatus('RTC Engine Error');
+        _hasError = true;
+        return;
+      }
+
+      // 🔊 Play Sound
+      if (widget.isCaller) {
+        _setStatus('Ringing ${widget.remoteUsername}...');
+        _playSound(ringingUrl, loop: true);
+      } else {
+        _setStatus('Connecting...');
+        _playSound(ringtoneUrl, loop: true);
+      }
+
+      // Start polling for signals
+      _signalPollTimer = Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _pollSignals(),
+      );
+
+      _onJoinChannelSuccess();
+    } catch (e) {
+      debugPrint('Join channel error: $e');
+      _setStatus('Connection failed');
+      _hasError = true;
     }
-
-    // Start polling for signals
-    _signalPollTimer = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => _pollSignals(),
-    );
   }
 
-  Future<void> _createLocalStream() async {
+  /// 🔹 Listener: Join Channel Success
+  void _onJoinChannelSuccess() {
+    debugPrint('Successfully joined channel: ${widget.roomId}');
+  }
+
+  /// 🔹 Listener: Remote User Joined
+  void _onUserJoined() {
+    debugPrint('User joined: ${widget.remoteUsername}');
+    _stopSound();
+    _playSound(beepUrl); // Connect beep
+    if (mounted) {
+      setState(() {
+        _isConnected = true;
+        _callStatus = 'Connected';
+      });
+    }
+    _startDurationTimer();
+  }
+
+  /// 🔹 Listener: User Offline / Left
+  void _onUserOffline() {
+    debugPrint('User offline: ${widget.remoteUsername}');
+    _playSound(beepUrl); // Disconnect beep
+    _setStatus('User disconnected');
+    Future.delayed(const Duration(seconds: 1), () => _leaveChannel());
+  }
+
+  Future<void> _playSound(String url, {bool loop = false}) async {
+    try {
+      await _audioPlayer.setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.release);
+      await _audioPlayer.play(UrlSource(url));
+    } catch (e) {
+      debugPrint('Sound error: $e');
+    }
+  }
+
+  void _stopSound() {
+    _audioPlayer.stop();
+  }
+
+  void _setStatus(String status) {
+    if (mounted && !_disposed) {
+      setState(() => _callStatus = status);
+    }
+  }
+
+  Future<void> _setupLocalMedia() async {
     final Map<String, dynamic> constraints = {
       'audio': true,
       'video': widget.callType == 'video'
@@ -106,252 +184,188 @@ class _CallPageState extends State<CallPage> with TickerProviderStateMixin {
 
     try {
       _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      _localRenderer.srcObject = _localStream;
-      setState(() {});
-    } catch (e) {
-      debugPrint('Error getting user media: $e');
-      if (mounted) {
-        setState(() => _callStatus = 'Camera/Mic permission denied');
+      if (_localRenderer != null && _renderersInitialized) {
+        _localRenderer!.srcObject = _localStream;
       }
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Media error: $e');
+      _setStatus('Permission denied');
     }
   }
 
   Future<void> _createPeerConnection() async {
-    _peerConnection = await createPeerConnection(_iceServers);
+    try {
+      _peerConnection = await createPeerConnection(_iceServers);
 
-    // Add local tracks to peer connection
-    _localStream?.getTracks().forEach((track) {
-      _peerConnection?.addTrack(track, _localStream!);
-    });
-
-    // Listen for remote tracks
-    _peerConnection?.onTrack = (RTCTrackEvent event) {
-      if (event.streams.isNotEmpty) {
-        _remoteStream = event.streams[0];
-        _remoteRenderer.srcObject = _remoteStream;
-        if (mounted) {
-          setState(() {
-            _isConnected = true;
-            _isConnecting = false;
-            _callStatus = 'Connected';
-          });
-          _startDurationTimer();
+      // Add local tracks
+      if (_localStream != null) {
+        for (var track in _localStream!.getTracks()) {
+          await _peerConnection!.addTrack(track, _localStream!);
         }
       }
-    };
 
-    // Listen for ICE candidates
-    _peerConnection?.onIceCandidate = (RTCIceCandidate candidate) {
-      if (_accessToken != null) {
-        SignalingService.sendSignal(
-          _accessToken!,
-          widget.roomId,
-          'candidate',
-          {
-            'candidate': candidate.candidate,
-            'sdpMid': candidate.sdpMid,
-            'sdpMLineIndex': candidate.sdpMLineIndex,
-          },
-        );
-      }
-    };
-
-    // Connection state monitoring
-    _peerConnection?.onConnectionState = (RTCPeerConnectionState state) {
-      if (mounted) {
-        switch (state) {
-          case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
-            setState(() {
-              _isConnected = true;
-              _isConnecting = false;
-              _callStatus = 'Connected';
-            });
-            _startDurationTimer();
-            break;
-          case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
-          case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
-          case RTCPeerConnectionState.RTCPeerConnectionStateClosed:
-            setState(() {
-              _callStatus = 'Call ended';
-              _isConnected = false;
-            });
-            break;
-          default:
-            break;
+      // Track listener
+      _peerConnection!.onTrack = (RTCTrackEvent event) {
+        if (event.streams.isNotEmpty && mounted && !_disposed) {
+          if (_remoteRenderer != null && _renderersInitialized) {
+            _remoteRenderer!.srcObject = event.streams[0];
+          }
+          if (!_isConnected) _onUserJoined();
         }
-      }
-    };
-  }
+      };
 
-  Future<void> _createOffer() async {
-    RTCSessionDescription offer = await _peerConnection!.createOffer();
-    await _peerConnection!.setLocalDescription(offer);
+      // Candidate listener
+      _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
+        if (!_disposed) {
+          SignalingService.sendSignal(
+            widget.roomId,
+            'candidate',
+            {
+              'candidate': candidate.candidate,
+              'sdpMid': candidate.sdpMid,
+              'sdpMLineIndex': candidate.sdpMLineIndex,
+            },
+          );
+        }
+      };
 
-    if (_accessToken != null) {
-      await SignalingService.sendSignal(
-        _accessToken!,
-        widget.roomId,
-        'offer',
-        {'sdp': offer.sdp, 'type': offer.type},
-      );
-    }
-  }
-
-  Future<void> _createAnswer() async {
-    RTCSessionDescription answer = await _peerConnection!.createAnswer();
-    await _peerConnection!.setLocalDescription(answer);
-
-    if (_accessToken != null) {
-      await SignalingService.sendSignal(
-        _accessToken!,
-        widget.roomId,
-        'answer',
-        {'sdp': answer.sdp, 'type': answer.type},
-      );
+      // State listener
+      _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
+        if (!mounted || _disposed) return;
+        debugPrint('RTC State: $state');
+        if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+            state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+          _onUserOffline();
+        }
+      };
+    } catch (e) {
+      debugPrint('RTC Error: $e');
+      _peerConnection = null;
     }
   }
 
   Future<void> _pollSignals() async {
-    if (_disposed || _accessToken == null) return;
+    if (_disposed) return;
 
-    final result = await SignalingService.getSignals(
-      _accessToken!,
-      widget.roomId,
-    );
+    try {
+      final result = await SignalingService.getSignals(widget.roomId);
+      if (!result['success'] || _disposed) return;
 
-    if (!result['success'] || _disposed) return;
+      final data = result['data'];
+      final roomStatus = data['room_status'];
 
-    final data = result['data'];
-
-    // Check if call was ended by the other party
-    if (data['room_status'] == 'ended' || data['room_status'] == 'rejected') {
-      _endCall(navigateBack: true, notifyServer: false);
-      return;
-    }
-
-    final signals = data['signals'] as List;
-    for (final signal in signals) {
-      final signalType = signal['signal_type'];
-      final signalData = signal['data'];
-
-      switch (signalType) {
-        case 'offer':
-          await _peerConnection?.setRemoteDescription(
-            RTCSessionDescription(signalData['sdp'], signalData['type']),
-          );
-          await _createAnswer();
-          break;
-
-        case 'answer':
-          await _peerConnection?.setRemoteDescription(
-            RTCSessionDescription(signalData['sdp'], signalData['type']),
-          );
-          if (mounted) {
-            setState(() {
-              _isConnecting = false;
-              _callStatus = 'Ringing...';
-            });
-          }
-          break;
-
-        case 'candidate':
-          await _peerConnection?.addCandidate(
-            RTCIceCandidate(
-              signalData['candidate'],
-              signalData['sdpMid'],
-              signalData['sdpMLineIndex'],
-            ),
-          );
-          break;
+      if (roomStatus == 'ended' || roomStatus == 'rejected') {
+        _leaveChannel(notifyServer: false);
+        return;
       }
+
+      if (widget.isCaller && roomStatus == 'active' && !_offerSent) {
+        await _createOffer();
+      }
+
+      final signals = data['signals'] as List? ?? [];
+      for (final signal in signals) {
+        if (_disposed || _peerConnection == null) break;
+        final signalType = signal['signal_type'];
+        final signalData = signal['data'];
+
+        switch (signalType) {
+          case 'offer':
+            await _peerConnection!.setRemoteDescription(
+              RTCSessionDescription(signalData['sdp'], signalData['type']),
+            );
+            await _createAnswer();
+            break;
+          case 'answer':
+            await _peerConnection!.setRemoteDescription(
+              RTCSessionDescription(signalData['sdp'], signalData['type']),
+            );
+            break;
+          case 'candidate':
+            await _peerConnection!.addCandidate(
+              RTCIceCandidate(
+                signalData['candidate'],
+                signalData['sdpMid'],
+                signalData['sdpMLineIndex'],
+              ),
+            );
+            break;
+        }
+      }
+    } catch (e) {
+      debugPrint('Polling error: $e');
     }
   }
 
+  Future<void> _createOffer() async {
+    try {
+      if (_peerConnection == null || _offerSent) return;
+      _offerSent = true;
+      RTCSessionDescription offer = await _peerConnection!.createOffer();
+      await _peerConnection!.setLocalDescription(offer);
+      await SignalingService.sendSignal(widget.roomId, 'offer', {'sdp': offer.sdp, 'type': offer.type});
+    } catch (e) {
+      _offerSent = false;
+    }
+  }
+
+  Future<void> _createAnswer() async {
+    try {
+      if (_peerConnection == null) return;
+      RTCSessionDescription answer = await _peerConnection!.createAnswer();
+      await _peerConnection!.setLocalDescription(answer);
+      await SignalingService.sendSignal(widget.roomId, 'answer', {'sdp': answer.sdp, 'type': answer.type});
+    } catch (e) {}
+  }
+
   void _startDurationTimer() {
-    _durationTimer?.cancel();
+    if (_durationTimer != null) return;
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) {
-        setState(() => _callDuration++);
-      }
+      if (mounted && !_disposed) setState(() => _callDuration++);
     });
     _pulseController.stop();
   }
 
-  String _formatDuration(int seconds) {
-    final m = (seconds ~/ 60).toString().padLeft(2, '0');
-    final s = (seconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
-  void _toggleMute() {
-    setState(() => _isMuted = !_isMuted);
-    _localStream?.getAudioTracks().forEach((track) {
-      track.enabled = !_isMuted;
-    });
-  }
-
-  void _toggleSpeaker() {
-    setState(() => _isSpeakerOn = !_isSpeakerOn);
-    _localStream?.getAudioTracks().forEach((track) {
-      // WebRTC handles speaker routing via helper
-      Helper.setSpeakerphoneOn(_isSpeakerOn);
-    });
-  }
-
-  void _toggleCamera() {
-    setState(() => _isCameraOff = !_isCameraOff);
-    _localStream?.getVideoTracks().forEach((track) {
-      track.enabled = !_isCameraOff;
-    });
-  }
-
-  void _switchCamera() {
-    _localStream?.getVideoTracks().forEach((track) {
-      Helper.switchCamera(track);
-    });
-  }
-
-  Future<void> _endCall({
-    bool navigateBack = true,
-    bool notifyServer = true,
-  }) async {
+  Future<void> _leaveChannel({bool notifyServer = true}) async {
     if (_disposed) return;
     _disposed = true;
+    
+    _stopSound();
+    _playSound(beepUrl); // End beep
+    _setStatus('Disconnecting...');
 
     _signalPollTimer?.cancel();
     _durationTimer?.cancel();
 
-    // Notify server
-    if (notifyServer && _accessToken != null) {
-      await SignalingService.endCall(_accessToken!, widget.roomId);
-    }
+    if (notifyServer) SignalingService.endCall(widget.roomId);
 
-    // Clean up WebRTC
-    _localStream?.getTracks().forEach((track) => track.stop());
-    _localStream?.dispose();
-    _remoteStream?.dispose();
-    await _peerConnection?.close();
-    await _localRenderer.dispose();
-    await _remoteRenderer.dispose();
+    try {
+      if (_localStream != null) {
+        for (var track in _localStream!.getTracks()) track.stop();
+        await _localStream!.dispose();
+      }
+      if (_peerConnection != null) await _peerConnection!.close();
+      if (_renderersInitialized) {
+        await _localRenderer?.dispose();
+        await _remoteRenderer?.dispose();
+      }
+      await _audioPlayer.dispose();
+    } catch (e) {}
 
-    if (navigateBack && mounted) {
-      Navigator.of(context).pop();
-    }
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
-    if (!_disposed) {
-      _endCall(navigateBack: false);
-    }
+    if (!_disposed) _leaveChannel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final isVideo = widget.callType == 'video';
-
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
       body: Container(
@@ -365,240 +379,70 @@ class _CallPageState extends State<CallPage> with TickerProviderStateMixin {
         child: SafeArea(
           child: Stack(
             children: [
-              // ── Video Views (for video calls) ──
-              if (isVideo) ...[
-                // Remote video (full screen)
-                if (_isConnected && _remoteStream != null)
-                  Positioned.fill(
-                    child: RTCVideoView(
-                      _remoteRenderer,
-                      objectFit: RTCVideoViewObjectFit
-                          .RTCVideoViewObjectFitCover,
+              if (isVideo && _isConnected && _remoteRenderer != null)
+                Positioned.fill(child: RTCVideoView(_remoteRenderer!, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)),
+
+              if (isVideo && _localStream != null && !_isCameraOff && _localRenderer != null)
+                Positioned(
+                  top: 20, right: 20, width: 120, height: 170,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      decoration: BoxDecoration(border: Border.all(color: AppColors.secondaryColor, width: 2), borderRadius: BorderRadius.circular(16)),
+                      child: RTCVideoView(_localRenderer!, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
                     ),
                   ),
+                ),
 
-                // Local video (small overlay)
-                if (_localStream != null &&
-                    !_isCameraOff)
-                  Positioned(
-                    top: 20,
-                    right: 20,
-                    width: 120,
-                    height: 170,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: AppColors.secondaryColor,
-                            width: 2,
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: RTCVideoView(
-                          _localRenderer,
-                          mirror: true,
-                          objectFit: RTCVideoViewObjectFit
-                              .RTCVideoViewObjectFitCover,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-
-              // ── Audio Call / Connecting UI ──
               if (!isVideo || !_isConnected)
                 Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Pulsing avatar
                       AnimatedBuilder(
-                        animation: _pulseAnimation,
+                        animation: _pulseController,
                         builder: (context, child) {
+                          final scale = _isConnected ? 1.0 : 0.8 + (_pulseController.value * 0.4);
                           return Transform.scale(
-                            scale: _isConnected ? 1.0 : _pulseAnimation.value,
+                            scale: scale,
                             child: Container(
-                              width: 120,
-                              height: 120,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    AppColors.primaryColor,
-                                    AppColors.secondaryColor,
-                                  ],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.secondaryColor
-                                        .withOpacity(0.4),
-                                    blurRadius: 30,
-                                    spreadRadius: 4,
-                                  ),
-                                ],
+                              width: 120, height: 120,
+                              decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [AppColors.primaryColor, AppColors.secondaryColor]),
+                                boxShadow: [BoxShadow(color: AppColors.secondaryColor.withOpacity(0.4), blurRadius: 30, spreadRadius: 4)],
                               ),
-                              child: Center(
-                                child: Text(
-                                  widget.remoteUsername[0].toUpperCase(),
-                                  style: const TextStyle(
-                                    fontSize: 48,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
+                              child: Center(child: Text(widget.remoteUsername.isNotEmpty ? widget.remoteUsername[0].toUpperCase() : '?', style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.white))),
                             ),
                           );
                         },
                       ),
-
                       const SizedBox(height: 24),
-
-                      // Remote username
-                      Text(
-                        widget.remoteUsername,
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-
+                      Text(widget.remoteUsername, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                       const SizedBox(height: 12),
-
-                      // Call status / duration
-                      Text(
-                        _isConnected
-                            ? _formatDuration(_callDuration)
-                            : _callStatus,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: _isConnected
-                              ? Colors.greenAccent
-                              : AppColors.textSecondary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // Call type badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: AppColors.secondaryColor.withOpacity(0.3),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              isVideo ? Icons.videocam : Icons.call,
-                              size: 16,
-                              color: AppColors.secondaryColor,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              isVideo ? 'Video Call' : 'Audio Call',
-                              style: const TextStyle(
-                                color: AppColors.secondaryColor,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      Text(_isConnected ? _formatDuration(_callDuration) : _callStatus, style: TextStyle(fontSize: 16, color: _isConnected ? Colors.greenAccent : _hasError ? Colors.redAccent : AppColors.textSecondary)),
                     ],
                   ),
                 ),
 
-              // ── Call Controls ──
               Positioned(
-                bottom: 40,
-                left: 0,
-                right: 0,
-                child: Column(
+                bottom: 40, left: 0, right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    // Connected status text for video
-                    if (isVideo && _isConnected)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Text(
-                          _formatDuration(_callDuration),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // Mute
-                        _controlButton(
-                          icon: _isMuted ? Icons.mic_off : Icons.mic,
-                          label: _isMuted ? 'Unmute' : 'Mute',
-                          color: _isMuted
-                              ? Colors.redAccent
-                              : Colors.white.withOpacity(0.2),
-                          onTap: _toggleMute,
-                        ),
-
-                        // Speaker
-                        _controlButton(
-                          icon: _isSpeakerOn
-                              ? Icons.volume_up
-                              : Icons.volume_off,
-                          label: _isSpeakerOn ? 'Speaker' : 'Earpiece',
-                          color: _isSpeakerOn
-                              ? AppColors.secondaryColor.withOpacity(0.3)
-                              : Colors.white.withOpacity(0.2),
-                          onTap: _toggleSpeaker,
-                        ),
-
-                        // End call
-                        _controlButton(
-                          icon: Icons.call_end,
-                          label: 'End',
-                          color: Colors.redAccent,
-                          size: 64,
-                          iconSize: 32,
-                          onTap: () => _endCall(),
-                        ),
-
-                        // Camera toggle (video only)
-                        if (isVideo)
-                          _controlButton(
-                            icon: _isCameraOff
-                                ? Icons.videocam_off
-                                : Icons.videocam,
-                            label: _isCameraOff ? 'Camera On' : 'Camera Off',
-                            color: _isCameraOff
-                                ? Colors.redAccent
-                                : Colors.white.withOpacity(0.2),
-                            onTap: _toggleCamera,
-                          ),
-
-                        // Switch camera (video only)
-                        if (isVideo)
-                          _controlButton(
-                            icon: Icons.cameraswitch_rounded,
-                            label: 'Switch',
-                            color: Colors.white.withOpacity(0.2),
-                            onTap: _switchCamera,
-                          ),
-                      ],
-                    ),
+                    _ctrlBtn(icon: _isMuted ? Icons.mic_off : Icons.mic, label: _isMuted ? 'Unmute' : 'Mute', isActive: _isMuted, onTap: () {
+                      if (_localStream == null) return;
+                      setState(() => _isMuted = !_isMuted);
+                      for (var track in _localStream!.getAudioTracks()) track.enabled = !_isMuted;
+                    }),
+                    _ctrlBtn(icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_off, label: 'Speaker', isActive: _isSpeakerOn, activeColor: AppColors.secondaryColor, onTap: () {
+                      setState(() => _isSpeakerOn = !_isSpeakerOn);
+                      Helper.setSpeakerphoneOn(_isSpeakerOn);
+                    }),
+                    GestureDetector(onTap: () => _leaveChannel(), child: Container(width: 64, height: 64, decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle), child: const Icon(Icons.call_end, color: Colors.white, size: 32))),
+                    if (isVideo) _ctrlBtn(icon: _isCameraOff ? Icons.videocam_off : Icons.videocam, label: 'Cam', isActive: _isCameraOff, onTap: () {
+                      if (_localStream == null) return;
+                      setState(() => _isCameraOff = !_isCameraOff);
+                      for (var track in _localStream!.getVideoTracks()) track.enabled = !_isCameraOff;
+                    }),
                   ],
                 ),
               ),
@@ -609,46 +453,17 @@ class _CallPageState extends State<CallPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _controlButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-    double size = 52,
-    double iconSize = 24,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withOpacity(0.15),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withOpacity(0.3),
-                  blurRadius: 12,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: Icon(icon, color: Colors.white, size: iconSize),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 11),
-        ),
-      ],
-    );
+  String _formatDuration(int seconds) {
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  Widget _ctrlBtn({required IconData icon, required String label, required bool isActive, required VoidCallback onTap, Color activeColor = Colors.redAccent}) {
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      GestureDetector(onTap: onTap, child: Container(width: 52, height: 52, decoration: BoxDecoration(color: isActive ? activeColor.withOpacity(0.3) : Colors.white.withOpacity(0.15), shape: BoxShape.circle), child: Icon(icon, color: Colors.white, size: 24))),
+      const SizedBox(height: 6),
+      Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+    ]);
   }
 }

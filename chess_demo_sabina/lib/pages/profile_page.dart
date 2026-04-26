@@ -87,9 +87,10 @@ class _ProfilePageState extends State<ProfilePage>
       await ApiService.logout(accessToken, refreshToken);
     }
 
-    // 🔹 Clear only session tokens, PRESERVE biometric settings as requested
+    // 🔹 Clear session tokens and remember-me flag
     await prefs.remove('accessToken');
     await prefs.remove('refreshToken');
+    await prefs.remove('isRemembered');
 
     if (mounted) {
       RouteGenerator.navigateToPageWithoutStack(context, Routes.loginRoute);
