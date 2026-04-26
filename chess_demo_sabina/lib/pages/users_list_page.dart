@@ -166,21 +166,22 @@ class _UsersListPageState extends State<UsersListPage> {
 
           // Accept
           GestureDetector(
-            onTap: () async {
+            onTap: () {
               _ringtonePlayer.stop();
               Navigator.pop(ctx);
-              await SignalingService.answerCall(
+              
+              // 🚀 INSTANT START: Navigate immediately, then notify server
+              _navigateToCall(
+                roomId: roomId,
+                remoteUsername: callerName,
+                callType: callType,
+                isCaller: false,
+              );
+              
+              SignalingService.answerCall(
                 roomId,
                 'accept',
               );
-              if (mounted) {
-                _navigateToCall(
-                  roomId: roomId,
-                  remoteUsername: callerName,
-                  callType: callType,
-                  isCaller: false,
-                );
-              }
             },
             child: Container(
               width: 60,
