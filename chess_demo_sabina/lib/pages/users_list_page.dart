@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
 import '../services/api_service.dart';
 import '../services/signaling_service.dart';
 import '../utils/color_utils.dart';
@@ -21,6 +22,9 @@ class _UsersListPageState extends State<UsersListPage> {
   String? error;
   String? _accessToken;
   Timer? _incomingCallTimer;
+  bool _isCallInitiating = false;
+  bool _isIncomingDialogShown = false;
+  
   final AudioPlayer _ringtonePlayer = AudioPlayer();
   static const String ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3';
 
@@ -32,6 +36,7 @@ class _UsersListPageState extends State<UsersListPage> {
 
   Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     _accessToken = prefs.getString('accessToken');
     await _fetchUsers();
     _startIncomingCallPolling();
@@ -45,6 +50,7 @@ class _UsersListPageState extends State<UsersListPage> {
   }
 
   void _startIncomingCallPolling() {
+    _incomingCallTimer?.cancel();
     _incomingCallTimer = Timer.periodic(
       const Duration(seconds: 3),
       (_) => _checkIncomingCalls(),
@@ -52,19 +58,24 @@ class _UsersListPageState extends State<UsersListPage> {
   }
 
   Future<void> _checkIncomingCalls() async {
-    if (!mounted) return;
+    if (!mounted || _isIncomingDialogShown || _isCallInitiating) return;
 
-    final result = await SignalingService.checkIncoming();
-    if (!result['success'] || !mounted) return;
+    try {
+      final result = await SignalingService.checkIncoming();
+      if (!result['success'] || !mounted) return;
 
-    final data = result['data'];
-    if (data['has_incoming'] == true) {
-      _incomingCallTimer?.cancel(); // Stop polling while dialog is shown
-      _showIncomingCallDialog(
-        roomId: data['room_id'],
-        callerName: data['caller'],
-        callType: data['call_type'],
-      );
+      final data = result['data'];
+      if (data['has_incoming'] == true && !_isIncomingDialogShown) {
+        _isIncomingDialogShown = true;
+        _incomingCallTimer?.cancel(); 
+        _showIncomingCallDialog(
+          roomId: data['room_id'],
+          callerName: data['caller'],
+          callType: data['call_type'],
+        );
+      }
+    } catch (e) {
+      debugPrint('Check incoming error: $e');
     }
   }
 
@@ -73,7 +84,6 @@ class _UsersListPageState extends State<UsersListPage> {
     required String callerName,
     required String callType,
   }) {
-    // 🔊 Start Ringtone
     _ringtonePlayer.setReleaseMode(ReleaseMode.loop);
     _ringtonePlayer.play(UrlSource(ringtoneUrl));
 
@@ -88,7 +98,6 @@ class _UsersListPageState extends State<UsersListPage> {
         ),
         title: Column(
           children: [
-            // Animated call icon
             Container(
               width: 80,
               height: 80,
@@ -107,7 +116,7 @@ class _UsersListPageState extends State<UsersListPage> {
               ),
               child: Center(
                 child: Text(
-                  callerName[0].toUpperCase(),
+                  callerName.isNotEmpty ? callerName[0].toUpperCase() : '?',
                   style: const TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,
@@ -143,24 +152,15 @@ class _UsersListPageState extends State<UsersListPage> {
             onTap: () async {
               _ringtonePlayer.stop();
               Navigator.pop(ctx);
-              await SignalingService.answerCall(
-                roomId,
-                'reject',
-              );
-              _startIncomingCallPolling(); // Resume polling
+              _isIncomingDialogShown = false;
+              await SignalingService.answerCall(roomId, 'reject');
+              _startIncomingCallPolling(); 
             },
             child: Container(
               width: 60,
               height: 60,
-              decoration: const BoxDecoration(
-                color: Colors.redAccent,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.call_end,
-                color: Colors.white,
-                size: 28,
-              ),
+              decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+              child: const Icon(Icons.call_end, color: Colors.white, size: 28),
             ),
           ),
 
@@ -169,8 +169,8 @@ class _UsersListPageState extends State<UsersListPage> {
             onTap: () {
               _ringtonePlayer.stop();
               Navigator.pop(ctx);
+              _isIncomingDialogShown = false;
               
-              // 🚀 INSTANT START: Navigate immediately, then notify server
               _navigateToCall(
                 roomId: roomId,
                 remoteUsername: callerName,
@@ -178,18 +178,12 @@ class _UsersListPageState extends State<UsersListPage> {
                 isCaller: false,
               );
               
-              SignalingService.answerCall(
-                roomId,
-                'accept',
-              );
+              SignalingService.answerCall(roomId, 'accept');
             },
             child: Container(
               width: 60,
               height: 60,
-              decoration: const BoxDecoration(
-                color: Colors.greenAccent,
-                shape: BoxShape.circle,
-              ),
+              decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle),
               child: Icon(
                 callType == 'video' ? Icons.videocam : Icons.call,
                 color: Colors.white,
@@ -203,16 +197,31 @@ class _UsersListPageState extends State<UsersListPage> {
   }
 
   Future<void> _fetchUsers() async {
+    if (!mounted) return;
+    
+    setState(() => isLoading = true);
+    
     if (_accessToken != null) {
-      final result = await ApiService.getUsers(_accessToken!);
-      if (result['success']) {
+      try {
+        final result = await ApiService.getUsers(_accessToken!);
+        if (!mounted) return;
+        
+        if (result['success']) {
+          setState(() {
+            users = result['data'];
+            isLoading = false;
+            error = null;
+          });
+        } else {
+          setState(() {
+            error = result['error'];
+            isLoading = false;
+          });
+        }
+      } catch (e) {
+        if (!mounted) return;
         setState(() {
-          users = result['data'];
-          isLoading = false;
-        });
-      } else {
-        setState(() {
-          error = result['error'];
+          error = "Connection error. Please try again.";
           isLoading = false;
         });
       }
@@ -232,9 +241,9 @@ class _UsersListPageState extends State<UsersListPage> {
   }
 
   Future<void> _initiateCall(String username, String callType) async {
-    if (_accessToken == null) return;
+    if (_accessToken == null || _isCallInitiating) return;
+    _isCallInitiating = true;
 
-    // Request permissions
     await _requestPermissions(callType);
 
     final micStatus = await Permission.microphone.status;
@@ -242,6 +251,7 @@ class _UsersListPageState extends State<UsersListPage> {
       if (mounted) {
         _showErrorDialog(context, "Microphone permission is required for calls.");
       }
+      _isCallInitiating = false;
       return;
     }
 
@@ -251,17 +261,20 @@ class _UsersListPageState extends State<UsersListPage> {
         if (mounted) {
           _showErrorDialog(context, "Camera permission is required for video calls.");
         }
+        _isCallInitiating = false;
         return;
       }
     }
 
     // Create call on server
-    final result = await SignalingService.createCall(
-      username,
-      callType,
-    );
+    final result = await SignalingService.createCall(username, callType);
 
-    if (result['success'] && mounted) {
+    if (!mounted) {
+      _isCallInitiating = false;
+      return;
+    }
+
+    if (result['success']) {
       final data = result['data'];
       _navigateToCall(
         roomId: data['room_id'],
@@ -269,9 +282,11 @@ class _UsersListPageState extends State<UsersListPage> {
         callType: callType,
         isCaller: true,
       );
-    } else if (mounted) {
+    } else {
       _showErrorDialog(context, result['error'] ?? 'Failed to create call');
     }
+    
+    _isCallInitiating = false;
   }
 
   void _navigateToCall({
@@ -280,7 +295,7 @@ class _UsersListPageState extends State<UsersListPage> {
     required String callType,
     required bool isCaller,
   }) {
-    _incomingCallTimer?.cancel(); // Stop polling during call
+    _incomingCallTimer?.cancel(); 
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -292,8 +307,10 @@ class _UsersListPageState extends State<UsersListPage> {
         ),
       ),
     ).then((_) {
-      // Resume polling when returning from call
-      _startIncomingCallPolling();
+      if (mounted) {
+        _fetchUsers();
+        _startIncomingCallPolling();
+      }
     });
   }
 
@@ -301,12 +318,15 @@ class _UsersListPageState extends State<UsersListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Community Users",
-          style: TextStyle(color: AppColors.textPrimary),
-        ),
+        title: const Text("Community Users", style: TextStyle(color: AppColors.textPrimary)),
         backgroundColor: AppColors.backgroundColor,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: AppColors.secondaryColor),
+            onPressed: _fetchUsers,
+          )
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -317,31 +337,28 @@ class _UsersListPageState extends State<UsersListPage> {
           ),
         ),
         child: isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: AppColors.secondaryColor,
-                ),
-              )
+            ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
             : error != null
             ? Center(
-                child: Text(error!, style: const TextStyle(color: Colors.red)),
-              )
-            : users.isEmpty
-            ? const Center(
-                child: Text(
-                  "No users found",
-                  style: TextStyle(color: Colors.white54),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(error!, style: const TextStyle(color: Colors.red)),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _fetchUsers,
+                      child: const Text("Retry"),
+                    )
+                  ],
                 ),
               )
+            : users.isEmpty
+            ? const Center(child: Text("No users found", style: TextStyle(color: Colors.white54)))
             : ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: users.length,
-                separatorBuilder: (context, index) =>
-                    const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final user = users[index];
-                  return _buildUserCard(user);
-                },
+                separatorBuilder: (context, index) => const SizedBox(height: 12),
+                itemBuilder: (context, index) => _buildUserCard(users[index]),
               ),
       ),
     );
@@ -360,54 +377,32 @@ class _UsersListPageState extends State<UsersListPage> {
           backgroundColor: AppColors.secondaryColor.withOpacity(0.2),
           child: Text(
             user['username'][0].toUpperCase(),
-            style: const TextStyle(
-              color: AppColors.secondaryColor,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold),
           ),
         ),
         title: Text(
           user['username'],
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+          style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        subtitle: Text(
-          user['email'],
-          style: const TextStyle(color: Colors.white54, fontSize: 13),
-        ),
+        subtitle: Text(user['email'], style: const TextStyle(color: Colors.white54, fontSize: 13)),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Audio call button
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.call, color: Colors.greenAccent, size: 20),
-                onPressed: () => _initiateCall(user['username'], 'audio'),
-                tooltip: 'Audio Call',
-              ),
-            ),
+            _callActionBtn(Icons.call, Colors.green, () => _initiateCall(user['username'], 'audio')),
             const SizedBox(width: 8),
-            // Video call button
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.videocam, color: Colors.lightBlueAccent, size: 20),
-                onPressed: () => _initiateCall(user['username'], 'video'),
-                tooltip: 'Video Call',
-              ),
-            ),
+            _callActionBtn(Icons.videocam, Colors.blue, () => _initiateCall(user['username'], 'video')),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _callActionBtn(IconData icon, Color color, VoidCallback onPressed) {
+    return Container(
+      decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+      child: IconButton(
+        icon: Icon(icon, color: color.withOpacity(0.8), size: 20),
+        onPressed: onPressed,
       ),
     );
   }
@@ -432,10 +427,7 @@ class _UsersListPageState extends State<UsersListPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "OK",
-              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondaryColor),
-            ),
+            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondaryColor)),
           ),
         ],
       ),

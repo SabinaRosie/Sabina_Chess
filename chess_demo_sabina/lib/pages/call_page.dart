@@ -1,10 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/signaling_service.dart';
 import '../utils/color_utils.dart';
+import '../helper/helper.dart'; // Assuming Helper exists based on original code
 
 class CallPage extends StatefulWidget {
   final String roomId;
@@ -44,7 +45,7 @@ class _CallPageState extends State<CallPage>
   final List<RTCIceCandidate> _remoteCandidates = [];
 
   // Signaling
-  Timer? _signalPollTimer;
+  StreamSubscription? _wsSubscription;
   Timer? _durationTimer;
   bool _disposed = false;
   bool _renderersInitialized = false;
@@ -59,7 +60,7 @@ class _CallPageState extends State<CallPage>
   // Animation
   late AnimationController _pulseController;
 
-  // 🔹 STUN + TURN Servers (OpenRelay for NAT bypass)
+  // 🔹 STUN + TURN Servers
   final Map<String, dynamic> _iceServers = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
@@ -86,18 +87,16 @@ class _CallPageState extends State<CallPage>
       vsync: this,
     )..repeat(reverse: true);
     _audioPlayer.setVolume(1.0);
-    _joinChannel();
+    _initCall();
   }
 
-  /// 🔹 Pre-initialize RTC components and Join Call
-  Future<void> _joinChannel() async {
+  Future<void> _initCall() async {
     try {
-      _setStatus(widget.isCaller ? 'Initializing...' : 'Connecting...');
+      _setStatus('Initializing...');
 
       _localRenderer = RTCVideoRenderer();
       _remoteRenderer = RTCVideoRenderer();
 
-      // 🚀 PARALLEL INIT: Setup renderers and media simultaneously
       await Future.wait([
         _localRenderer!.initialize(),
         _remoteRenderer!.initialize(),
@@ -112,108 +111,99 @@ class _CallPageState extends State<CallPage>
         return;
       }
 
-      // Ensure local renderer shows stream
       if (_localRenderer != null) {
         _localRenderer!.srcObject = _localStream;
       }
 
       await _createPeerConnection();
 
-      if (_peerConnection == null) {
-        _setStatus('RTC Engine Error');
+      // 🔹 Connect to WebSocket
+      final stream = await SignalingService.connectWebSocket(widget.roomId);
+      if (stream == null) {
+        _setStatus('Connection error');
         _hasError = true;
         return;
       }
 
-      // 🔊 Play Ringing sound if I'm the caller
+      _wsSubscription = stream.listen(_onWsMessage, onError: (e) {
+        debugPrint('WebSocket Error: $e');
+        _setStatus('Connection lost');
+      }, onDone: () {
+        debugPrint('WebSocket Closed');
+        if (!_disposed) _onUserOffline();
+      });
+
       if (widget.isCaller) {
         _setStatus('Ringing ${widget.remoteUsername}...');
         _playSound(ringingUrl, loop: true);
+        // Notify server/callee that we are ready
+        SignalingService.sendWsSignal('caller_ready', {'room_id': widget.roomId});
       } else {
         _setStatus('Connecting...');
+        // Receiver sends answer if they already have an offer, 
+        // but usually the caller sends offer after receiver accepts.
+        // In our flow, receiver accepted on the previous page.
+        SignalingService.sendWsSignal('receiver_ready', {'room_id': widget.roomId});
       }
 
-      // 🔹 FAST HANDSHAKE: Higher frequency signaling (400ms) for the first 10s
-      int pollCount = 0;
-      _signalPollTimer = Timer.periodic(
-        const Duration(milliseconds: 400),
-        (_) {
-          _pollSignals();
-          pollCount++;
-          // After 25 polls (~10s), slow down to 800ms to save battery/data
-          if (pollCount == 25) {
-            _signalPollTimer?.cancel();
-            if (!_disposed) {
-              _signalPollTimer = Timer.periodic(
-                const Duration(milliseconds: 800),
-                (_) => _pollSignals(),
-              );
-            }
-          }
-        },
-      );
-
-      _onJoinChannelSuccess();
     } catch (e) {
-      debugPrint('Join channel error: $e');
-      _setStatus('Connection failed');
+      debugPrint('Init call error: $e');
+      _setStatus('Error: $e');
       _hasError = true;
     }
   }
 
-  /// 🔹 Listener: Join Channel Success
-  void _onJoinChannelSuccess() {
-    debugPrint('Successfully joined room: ${widget.roomId}');
-    // 🔹 ALIGNMENT: Mapping WebRTC concepts to requested "Channel/UID/Token" requirements
-    debugPrint('RTC Engine Sync: Channel Name = ${widget.roomId}');
-    debugPrint('RTC Engine Sync: UID = ${widget.isCaller ? "Caller" : "Receiver"}');
-    debugPrint('RTC Engine Sync: Token = VALID_SECURE_TOKEN_ACTIVE');
-  }
+  void _onWsMessage(dynamic message) async {
+    if (_disposed) return;
+    final data = jsonDecode(message);
+    final type = data['type'];
+    final payload = data['data'];
 
-  /// 🔹 Listener: Remote User Joined
-  void _onUserJoined() {
-    debugPrint('User joined: ${widget.remoteUsername}');
-    _stopSound(); // Stop ringing
-    _playSound(beepUrl); // Play connect beep
-    if (mounted) {
-      setState(() {
-        _isConnected = true;
-        _callStatus = 'Connected';
-      });
-    }
-    _startDurationTimer();
-  }
+    debugPrint('Received WS Signal: $type');
 
-  /// 🔹 Listener: User Offline / End Call
-  void _onUserOffline() {
-    debugPrint('User offline / Call ended');
-    _playSound(beepUrl); // Play disconnect beep
-    _setStatus('Call ended');
-    Future.delayed(
-      const Duration(milliseconds: 500),
-      () => _leaveChannel(notifyServer: false),
-    );
-  }
-
-  Future<void> _playSound(String url, {bool loop = false}) async {
-    try {
-      await _audioPlayer.stop();
-      await _audioPlayer.setReleaseMode(
-        loop ? ReleaseMode.loop : ReleaseMode.release,
-      );
-      await _audioPlayer.play(UrlSource(url));
-    } catch (e) {
-      debugPrint('Audio Playback Error: $e');
-    }
-  }
-
-  void _stopSound() {
-    _audioPlayer.stop();
-  }
-
-  void _setStatus(String status) {
-    if (mounted && !_disposed) {
-      setState(() => _callStatus = status);
+    switch (type) {
+      case 'receiver_ready':
+        if (widget.isCaller && !_offerSent) {
+          _setStatus('Connecting...');
+          _stopSound();
+          await _createOffer();
+        }
+        break;
+      case 'offer':
+        _setStatus('Connecting...');
+        await _peerConnection!.setRemoteDescription(
+          RTCSessionDescription(payload['sdp'], payload['type']),
+        );
+        await _createAnswer();
+        for (var c in _remoteCandidates) {
+          await _peerConnection!.addCandidate(c);
+        }
+        _remoteCandidates.clear();
+        break;
+      case 'answer':
+        await _peerConnection!.setRemoteDescription(
+          RTCSessionDescription(payload['sdp'], payload['type']),
+        );
+        for (var c in _remoteCandidates) {
+          await _peerConnection!.addCandidate(c);
+        }
+        _remoteCandidates.clear();
+        break;
+      case 'candidate':
+        final candidate = RTCIceCandidate(
+          payload['candidate'],
+          payload['sdpMid'],
+          payload['sdpMLineIndex'],
+        );
+        if (_peerConnection!.getRemoteDescription() != null) {
+          await _peerConnection!.addCandidate(candidate);
+        } else {
+          _remoteCandidates.add(candidate);
+        }
+        break;
+      case 'end_call':
+        _onUserOffline();
+        break;
     }
   }
 
@@ -226,167 +216,89 @@ class _CallPageState extends State<CallPage>
     };
     try {
       _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      if (_localRenderer != null && _renderersInitialized) {
-        _localRenderer!.srcObject = _localStream;
-      }
-      if (mounted) setState(() {});
     } catch (e) {
       debugPrint('Media Error: $e');
-      _setStatus('Permission denied');
     }
   }
 
   Future<void> _createPeerConnection() async {
-    try {
-      _peerConnection = await createPeerConnection(_iceServers);
+    _peerConnection = await createPeerConnection(_iceServers);
 
-      if (_localStream != null) {
-        for (var track in _localStream!.getTracks()) {
-          await _peerConnection!.addTrack(track, _localStream!);
-        }
+    if (_localStream != null) {
+      for (var track in _localStream!.getTracks()) {
+        await _peerConnection!.addTrack(track, _localStream!);
       }
-
-      _peerConnection!.onTrack = (RTCTrackEvent event) {
-        if (event.streams.isNotEmpty && mounted && !_disposed) {
-          if (_remoteRenderer != null && _renderersInitialized) {
-            _remoteRenderer!.srcObject = event.streams[0];
-          }
-          if (!_isConnected) _onUserJoined();
-        }
-      };
-
-      _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
-        if (!_disposed) {
-          SignalingService.sendSignal(widget.roomId, 'candidate', {
-            'candidate': candidate.candidate,
-            'sdpMid': candidate.sdpMid,
-            'sdpMLineIndex': candidate.sdpMLineIndex,
-          });
-        }
-      };
-
-      _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
-        if (!mounted || _disposed) return;
-        debugPrint('RTC Engine State: $state');
-        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-          if (!_isConnected) _onUserJoined();
-        } else if (state ==
-                RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-            state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-          _onUserOffline();
-        }
-      };
-    } catch (e) {
-      debugPrint('RTC Engine Error: $e');
-      _peerConnection = null;
     }
-  }
 
-  Future<void> _pollSignals() async {
-    if (_disposed) return;
+    _peerConnection!.onTrack = (RTCTrackEvent event) {
+      if (event.streams.isNotEmpty && mounted && !_disposed) {
+        if (_remoteRenderer != null) {
+          _remoteRenderer!.srcObject = event.streams[0];
+        }
+        if (!_isConnected) _onUserJoined();
+      }
+    };
 
-    try {
-      final result = await SignalingService.getSignals(widget.roomId);
-      if (!result['success'] || _disposed) return;
+    _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
+      if (!_disposed) {
+        SignalingService.sendWsSignal('candidate', {
+          'candidate': candidate.candidate,
+          'sdpMid': candidate.sdpMid,
+          'sdpMLineIndex': candidate.sdpMLineIndex,
+        });
+      }
+    };
 
-      final data = result['data'];
-      final roomStatus = data['room_status'];
-
-      // 🚨 INSTANT SYNC: If room ended, leave immediately
-      if (roomStatus == 'ended' || roomStatus == 'rejected') {
+    _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
+      debugPrint('RTC Connection State: $state');
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        if (!_isConnected) _onUserJoined();
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         _onUserOffline();
-        return;
       }
-
-      // 🔄 SYNC STATE: Caller moves to 'Connecting' when receiver accepts
-      if (widget.isCaller && roomStatus == 'active' && _callStatus.contains('Ringing')) {
-        _setStatus('Connecting...');
-      }
-
-      if (widget.isCaller && roomStatus == 'active' && !_offerSent) {
-        await _createOffer();
-      }
-
-      final signals = data['signals'] as List? ?? [];
-      for (final signal in signals) {
-        if (_disposed || _peerConnection == null) break;
-        final type = signal['signal_type'];
-        final sdata = signal['data'];
-
-        switch (type) {
-          case 'end_call':
-            debugPrint('WebRTC: Received end_call signal');
-            _onUserOffline();
-            return;
-          case 'offer':
-            debugPrint('WebRTC: Receiving Offer');
-            await _peerConnection!.setRemoteDescription(
-              RTCSessionDescription(sdata['sdp'], sdata['type']),
-            );
-            await _createAnswer();
-            for (var c in _remoteCandidates)
-              await _peerConnection!.addCandidate(c);
-            _remoteCandidates.clear();
-            break;
-          case 'answer':
-            debugPrint('WebRTC: Receiving Answer');
-            await _peerConnection!.setRemoteDescription(
-              RTCSessionDescription(sdata['sdp'], sdata['type']),
-            );
-            for (var c in _remoteCandidates)
-              await _peerConnection!.addCandidate(c);
-            _remoteCandidates.clear();
-            break;
-          case 'candidate':
-            debugPrint('WebRTC: Receiving Candidate');
-            final candidate = RTCIceCandidate(
-              sdata['candidate'],
-              sdata['sdpMid'],
-              sdata['sdpMLineIndex'],
-            );
-            if (_peerConnection!.getRemoteDescription() != null) {
-              await _peerConnection!.addCandidate(candidate);
-            } else {
-              _remoteCandidates.add(candidate);
-            }
-            break;
-        }
-      }
-    } catch (e) {
-      debugPrint('Polling Error: $e');
-    }
+    };
   }
 
   Future<void> _createOffer() async {
-    try {
-      if (_peerConnection == null || _offerSent) return;
-      _offerSent = true;
-      debugPrint('WebRTC: Creating Offer');
-      RTCSessionDescription offer = await _peerConnection!.createOffer();
-      await _peerConnection!.setLocalDescription(offer);
-      await SignalingService.sendSignal(widget.roomId, 'offer', {
-        'sdp': offer.sdp,
-        'type': offer.type,
-      });
-    } catch (e) {
-      _offerSent = false;
-      debugPrint('Offer Error: $e');
-    }
+    if (_offerSent) return;
+    _offerSent = true;
+    RTCSessionDescription offer = await _peerConnection!.createOffer();
+    await _peerConnection!.setLocalDescription(offer);
+    SignalingService.sendWsSignal('offer', {
+      'sdp': offer.sdp,
+      'type': offer.type,
+    });
   }
 
   Future<void> _createAnswer() async {
-    try {
-      if (_peerConnection == null) return;
-      debugPrint('WebRTC: Creating Answer');
-      RTCSessionDescription answer = await _peerConnection!.createAnswer();
-      await _peerConnection!.setLocalDescription(answer);
-      await SignalingService.sendSignal(widget.roomId, 'answer', {
-        'sdp': answer.sdp,
-        'type': answer.type,
+    RTCSessionDescription answer = await _peerConnection!.createAnswer();
+    await _peerConnection!.setLocalDescription(answer);
+    SignalingService.sendWsSignal('answer', {
+      'sdp': answer.sdp,
+      'type': answer.type,
+    });
+  }
+
+  void _onUserJoined() {
+    _stopSound();
+    _playSound(beepUrl);
+    if (mounted) {
+      setState(() {
+        _isConnected = true;
+        _callStatus = 'Connected';
       });
-    } catch (e) {
-      debugPrint('Answer Error: $e');
     }
+    _startDurationTimer();
+  }
+
+  void _onUserOffline() {
+    _stopSound();
+    _setStatus('Call ended');
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) _leaveChannel(notifyServer: false);
+    });
   }
 
   void _startDurationTimer() {
@@ -402,34 +314,52 @@ class _CallPageState extends State<CallPage>
     _disposed = true;
 
     _stopSound();
-    _signalPollTimer?.cancel();
+    _wsSubscription?.cancel();
     _durationTimer?.cancel();
 
-    _setStatus('Ending call...');
-
     if (notifyServer) {
-      SignalingService.sendSignal(widget.roomId, 'end_call', {'reason': 'user_hung_up'});
+      SignalingService.sendWsSignal('end_call', {'room_id': widget.roomId});
       SignalingService.endCall(widget.roomId);
     }
 
-    try {
-      if (_localStream != null) {
-        for (var track in _localStream!.getTracks()) track.stop();
-        await _localStream!.dispose();
-      }
-      if (_peerConnection != null) await _peerConnection!.close();
-      if (_renderersInitialized) {
-        await _localRenderer?.dispose();
-        await _remoteRenderer?.dispose();
-      }
-      await _audioPlayer.dispose();
-    } catch (e) {
-      debugPrint('Cleanup Error: $e');
-    }
+    SignalingService.closeWebSocket();
 
-    if (mounted) {
-      Navigator.of(context).pop();
+    if (_localStream != null) {
+      for (var track in _localStream!.getTracks()) track.stop();
+      await _localStream!.dispose();
     }
+    if (_peerConnection != null) await _peerConnection!.close();
+    if (_renderersInitialized) {
+      await _localRenderer?.dispose();
+      await _remoteRenderer?.dispose();
+    }
+    await _audioPlayer.dispose();
+
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  void _setStatus(String status) {
+    if (mounted && !_disposed) setState(() => _callStatus = status);
+  }
+
+  Future<void> _playSound(String url, {bool loop = false}) async {
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.release);
+      await _audioPlayer.play(UrlSource(url));
+    } catch (e) {
+      debugPrint('Audio Error: $e');
+    }
+  }
+
+  void _stopSound() {
+    _audioPlayer.stop();
+  }
+
+  String _formatDuration(int seconds) {
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   @override
@@ -462,10 +392,7 @@ class _CallPageState extends State<CallPage>
                     objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                   ),
                 ),
-              if (isVideo &&
-                  _localStream != null &&
-                  !_isCameraOff &&
-                  _localRenderer != null)
+              if (isVideo && !_isCameraOff && _localRenderer != null)
                 Positioned(
                   top: 20,
                   right: 20,
@@ -475,17 +402,13 @@ class _CallPageState extends State<CallPage>
                     borderRadius: BorderRadius.circular(16),
                     child: Container(
                       decoration: BoxDecoration(
-                        border: Border.all(
-                          color: AppColors.secondaryColor,
-                          width: 2,
-                        ),
+                        border: Border.all(color: AppColors.secondaryColor, width: 2),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: RTCVideoView(
                         _localRenderer!,
                         mirror: true,
-                        objectFit:
-                            RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                       ),
                     ),
                   ),
@@ -498,9 +421,7 @@ class _CallPageState extends State<CallPage>
                       AnimatedBuilder(
                         animation: _pulseController,
                         builder: (context, child) {
-                          final scale = _isConnected
-                              ? 1.0
-                              : 0.8 + (_pulseController.value * 0.4);
+                          final scale = _isConnected ? 1.0 : 0.8 + (_pulseController.value * 0.4);
                           return Transform.scale(
                             scale: scale,
                             child: Container(
@@ -509,16 +430,11 @@ class _CallPageState extends State<CallPage>
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 gradient: const LinearGradient(
-                                  colors: [
-                                    AppColors.primaryColor,
-                                    AppColors.secondaryColor,
-                                  ],
+                                  colors: [AppColors.primaryColor, AppColors.secondaryColor],
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.secondaryColor.withOpacity(
-                                      0.4,
-                                    ),
+                                    color: AppColors.secondaryColor.withOpacity(0.4),
                                     blurRadius: 30,
                                     spreadRadius: 4,
                                   ),
@@ -526,14 +442,8 @@ class _CallPageState extends State<CallPage>
                               ),
                               child: Center(
                                 child: Text(
-                                  widget.remoteUsername.isNotEmpty
-                                      ? widget.remoteUsername[0].toUpperCase()
-                                      : '?',
-                                  style: const TextStyle(
-                                    fontSize: 48,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
+                                  widget.remoteUsername.isNotEmpty ? widget.remoteUsername[0].toUpperCase() : '?',
+                                  style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.white),
                                 ),
                               ),
                             ),
@@ -543,24 +453,14 @@ class _CallPageState extends State<CallPage>
                       const SizedBox(height: 24),
                       Text(
                         widget.remoteUsername,
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        _isConnected
-                            ? _formatDuration(_callDuration)
-                            : _callStatus,
+                        _isConnected ? _formatDuration(_callDuration) : _callStatus,
                         style: TextStyle(
                           fontSize: 16,
-                          color: _isConnected
-                              ? Colors.greenAccent
-                              : _hasError
-                              ? Colors.redAccent
-                              : AppColors.textSecondary,
+                          color: _isConnected ? Colors.greenAccent : _hasError ? Colors.redAccent : AppColors.textSecondary,
                         ),
                       ),
                     ],
@@ -580,8 +480,7 @@ class _CallPageState extends State<CallPage>
                       onTap: () {
                         if (_localStream == null) return;
                         setState(() => _isMuted = !_isMuted);
-                        for (var track in _localStream!.getAudioTracks())
-                          track.enabled = !_isMuted;
+                        for (var track in _localStream!.getAudioTracks()) track.enabled = !_isMuted;
                       },
                     ),
                     _ctrlBtn(
@@ -599,29 +498,19 @@ class _CallPageState extends State<CallPage>
                       child: Container(
                         width: 64,
                         height: 64,
-                        decoration: const BoxDecoration(
-                          color: Colors.redAccent,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.call_end,
-                          color: Colors.white,
-                          size: 32,
-                        ),
+                        decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                        child: const Icon(Icons.call_end, color: Colors.white, size: 32),
                       ),
                     ),
                     if (isVideo)
                       _ctrlBtn(
-                        icon: _isCameraOff
-                            ? Icons.videocam_off
-                            : Icons.videocam,
+                        icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
                         label: 'Cam',
                         isActive: _isCameraOff,
                         onTap: () {
                           if (_localStream == null) return;
                           setState(() => _isCameraOff = !_isCameraOff);
-                          for (var track in _localStream!.getVideoTracks())
-                            track.enabled = !_isCameraOff;
+                          for (var track in _localStream!.getVideoTracks()) track.enabled = !_isCameraOff;
                         },
                       ),
                   ],
@@ -632,12 +521,6 @@ class _CallPageState extends State<CallPage>
         ),
       ),
     );
-  }
-
-  String _formatDuration(int seconds) {
-    final m = (seconds ~/ 60).toString().padLeft(2, '0');
-    final s = (seconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
   }
 
   Widget _ctrlBtn({
@@ -656,19 +539,14 @@ class _CallPageState extends State<CallPage>
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: isActive
-                  ? activeColor.withOpacity(0.3)
-                  : Colors.white.withOpacity(0.15),
+              color: isActive ? activeColor.withOpacity(0.3) : Colors.white.withOpacity(0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: Colors.white, size: 24),
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 11),
-        ),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
       ],
     );
   }

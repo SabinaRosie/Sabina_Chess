@@ -1,19 +1,58 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
 import '../utils/const.dart';
 import 'api_service.dart';
 
-/// REST-based signaling service for WebRTC call management.
-/// Uses HTTP polling to exchange SDP offers/answers and ICE candidates
-/// through the Django backend.
+/// REST + WebSocket-based signaling service for WebRTC call management.
 class SignalingService {
-  
+  static WebSocketChannel? _channel;
+
   static Future<Map<String, String>> _authHeaders() async {
     final token = await ApiService.getValidToken();
     return {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ${token ?? ""}',
     };
+  }
+
+  /// 🔹 WebSocket: Connect to signaling server
+  static Future<Stream<dynamic>?> connectWebSocket(String roomId) async {
+    try {
+      final token = await ApiService.getValidToken();
+      if (token == null) return null;
+
+      // Convert https://... to wss://...
+      final wsUrl = AppConstants.baseUrl
+          .replaceFirst('https://', 'wss://')
+          .replaceFirst('http://', 'ws://')
+          .replaceFirst('/api', '/ws/call/$roomId/');
+
+      _channel = WebSocketChannel.connect(
+        Uri.parse('$wsUrl?token=$token'),
+      );
+
+      return _channel!.stream;
+    } catch (e) {
+      print('WebSocket Connection Error: $e');
+      return null;
+    }
+  }
+
+  /// 🔹 WebSocket: Send signal
+  static void sendWsSignal(String type, Map<String, dynamic> data) {
+    if (_channel != null) {
+      _channel!.sink.add(jsonEncode({
+        'type': type,
+        'data': data,
+      }));
+    }
+  }
+
+  /// 🔹 WebSocket: Close connection
+  static void closeWebSocket() {
+    _channel?.sink.close();
+    _channel = null;
   }
 
   /// Wrapper to handle automatic token refresh and retry
@@ -54,7 +93,7 @@ class SignalingService {
     ));
   }
 
-  /// Check for incoming calls
+  /// Check for incoming calls (used for non-WS fallback or initial check)
   static Future<Map<String, dynamic>> checkIncoming() async {
     return _request((headers) => http.get(
       Uri.parse('${AppConstants.baseUrl}/call/check-incoming'),
@@ -71,33 +110,6 @@ class SignalingService {
       Uri.parse('${AppConstants.baseUrl}/call/answer'),
       headers: headers,
       body: jsonEncode({'room_id': roomId, 'action': action}),
-    ));
-  }
-
-  /// Send an SDP offer/answer or ICE candidate
-  static Future<Map<String, dynamic>> sendSignal(
-    String roomId,
-    String signalType,
-    Map<String, dynamic> data,
-  ) async {
-    return _request((headers) => http.post(
-      Uri.parse('${AppConstants.baseUrl}/call/signal'),
-      headers: headers,
-      body: jsonEncode({
-        'room_id': roomId,
-        'signal_type': signalType,
-        'data': data,
-      }),
-    ));
-  }
-
-  /// Get pending signals for a room
-  static Future<Map<String, dynamic>> getSignals(
-    String roomId,
-  ) async {
-    return _request((headers) => http.get(
-      Uri.parse('${AppConstants.baseUrl}/call/signals?room_id=$roomId'),
-      headers: headers,
     ));
   }
 
