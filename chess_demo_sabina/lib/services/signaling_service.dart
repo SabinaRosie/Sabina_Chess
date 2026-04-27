@@ -7,6 +7,7 @@ import 'api_service.dart';
 /// REST + WebSocket-based signaling service for WebRTC call management.
 class SignalingService {
   static WebSocketChannel? _channel;
+  static WebSocketChannel? _notificationChannel;
 
   static Future<Map<String, String>> _authHeaders() async {
     final token = await ApiService.getValidToken();
@@ -19,6 +20,7 @@ class SignalingService {
   /// 🔹 WebSocket: Connect to signaling server
   static Future<Stream<dynamic>?> connectWebSocket(String roomId) async {
     try {
+      closeWebSocket();
       final token = await ApiService.getValidToken();
       if (token == null) return null;
 
@@ -39,6 +41,29 @@ class SignalingService {
     }
   }
 
+  /// 🔹 WebSocket: Connect to global notification server
+  static Future<Stream<dynamic>?> connectNotificationSocket() async {
+    try {
+      closeNotificationSocket();
+      final token = await ApiService.getValidToken();
+      if (token == null) return null;
+
+      final wsUrl = AppConstants.baseUrl
+          .replaceFirst('https://', 'wss://')
+          .replaceFirst('http://', 'ws://')
+          .replaceFirst('/api', '/ws/notifications/');
+
+      _notificationChannel = WebSocketChannel.connect(
+        Uri.parse('$wsUrl?token=$token'),
+      );
+
+      return _notificationChannel!.stream;
+    } catch (e) {
+      print('Notification WebSocket Error: $e');
+      return null;
+    }
+  }
+
   /// 🔹 WebSocket: Send signal
   static void sendWsSignal(String type, Map<String, dynamic> data) {
     if (_channel != null) {
@@ -53,6 +78,11 @@ class SignalingService {
   static void closeWebSocket() {
     _channel?.sink.close();
     _channel = null;
+  }
+
+  static void closeNotificationSocket() {
+    _notificationChannel?.sink.close();
+    _notificationChannel = null;
   }
 
   /// Wrapper to handle automatic token refresh and retry

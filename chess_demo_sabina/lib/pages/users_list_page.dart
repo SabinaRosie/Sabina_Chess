@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -26,6 +27,7 @@ class _UsersListPageState extends State<UsersListPage> {
   bool _isInitiatingCall = false; // Internal flag for UI feedback
   bool _isIncomingDialogShown = false;
   String? _currentUsername;
+  StreamSubscription? _notificationSubscription;
   
   final AudioPlayer _ringtonePlayer = AudioPlayer();
   static const String ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3';
@@ -41,44 +43,62 @@ class _UsersListPageState extends State<UsersListPage> {
     if (!mounted) return;
     _accessToken = prefs.getString('accessToken');
     _currentUsername = prefs.getString('username');
+    
+    if (_currentUsername == null && _accessToken != null) {
+      final profile = await ApiService.getProfile(_accessToken!);
+      if (profile['success']) {
+        _currentUsername = profile['data']['username'];
+        await prefs.setString('username', _currentUsername!);
+      }
+    }
+    
     await _fetchUsers();
-    _startIncomingCallPolling();
+    _initNotifications();
   }
 
   @override
   void dispose() {
-    _incomingCallTimer?.cancel();
+    _notificationSubscription?.cancel();
+    SignalingService.closeNotificationSocket();
     _ringtonePlayer.dispose();
     super.dispose();
   }
 
-  void _startIncomingCallPolling() {
-    _incomingCallTimer?.cancel();
-    _incomingCallTimer = Timer.periodic(
-      const Duration(seconds: 3),
-      (_) => _checkIncomingCalls(),
-    );
-  }
-
-  Future<void> _checkIncomingCalls() async {
-    if (!mounted || _isIncomingDialogShown || _isCallInitiating) return;
-
-    try {
-      final result = await SignalingService.checkIncoming();
-      if (!result['success'] || !mounted) return;
-
-      final data = result['data'];
-      if (data['has_incoming'] == true && !_isIncomingDialogShown) {
-        _isIncomingDialogShown = true;
-        _incomingCallTimer?.cancel(); 
-        _showIncomingCallDialog(
-          roomId: data['room_id'],
-          callerName: data['caller'],
-          callType: data['call_type'],
-        );
+  void _initNotifications() async {
+    final stream = await SignalingService.connectNotificationSocket();
+    if (stream != null) {
+      _notificationSubscription = stream.listen((message) {
+        final data = jsonDecode(message);
+        if (data['type'] == 'incoming_call') {
+          final callData = data['data'];
+          if (!_isIncomingDialogShown && !_isCallInitiating) {
+            _isIncomingDialogShown = true;
+            _showIncomingCallDialog(
+              roomId: callData['room_id'],
+              callerName: callData['caller'],
+              callType: callData['call_type'],
+            );
+          }
+        } else if (data['type'] == 'call_cancelled') {
+          if (_isIncomingDialogShown) {
+            _ringtonePlayer.stop();
+            Navigator.of(context, rootNavigator: true).pop();
+            _isIncomingDialogShown = false;
+          }
+        }
+      }, onDone: () {
+        if (mounted) {
+          Future.delayed(const Duration(seconds: 5), _initNotifications);
+        }
+      }, onError: (e) {
+        if (mounted) {
+          Future.delayed(const Duration(seconds: 5), _initNotifications);
+        }
+      });
+    } else {
+      if (mounted) {
+        Future.delayed(const Duration(seconds: 5), _initNotifications);
       }
-    } catch (e) {
-      debugPrint('Check incoming error: $e');
     }
   }
 
@@ -157,7 +177,6 @@ class _UsersListPageState extends State<UsersListPage> {
               Navigator.pop(ctx);
               _isIncomingDialogShown = false;
               await SignalingService.answerCall(roomId, 'reject');
-              _startIncomingCallPolling(); 
             },
             child: Container(
               width: 60,
@@ -212,7 +231,10 @@ class _UsersListPageState extends State<UsersListPage> {
         if (result['success']) {
           final List fetchedUsers = result['data'];
           setState(() {
-            users = fetchedUsers.where((u) => u['username'] != _currentUsername).toList();
+            // Case-insensitive filtering for robustness
+            users = fetchedUsers.where((u) => 
+              u['username'].toString().toLowerCase() != _currentUsername?.toLowerCase()
+            ).toList();
             isLoading = false;
             error = null;
           });
@@ -322,7 +344,6 @@ class _UsersListPageState extends State<UsersListPage> {
     ).then((_) {
       if (mounted) {
         _fetchUsers();
-        _startIncomingCallPolling();
       }
     });
   }

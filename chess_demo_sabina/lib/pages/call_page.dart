@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:chess_demo_sabina/pages/call_ended_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -68,18 +69,15 @@ class _CallPageState extends State<CallPage>
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
-      {'urls': 'stun:openrelay.metered.ca:80'},
-      {
-        'urls': 'turn:openrelay.metered.ca:80',
-        'username': 'openrelay',
-        'credential': 'openrelay',
-      },
-      {
-        'urls': 'turn:openrelay.metered.ca:443',
-        'username': 'openrelay',
-        'credential': 'openrelay',
-      },
+      {'urls': 'stun:stun2.l.google.com:19302'},
+      {'urls': 'stun:stun3.l.google.com:19302'},
+      {'urls': 'stun:stun4.l.google.com:19302'},
+      {'urls': 'stun:stun.ekiga.net'},
+      {'urls': 'stun:stun.ideasip.com'},
+      {'urls': 'stun:stun.schlund.de'},
+      {'urls': 'stun:stun.voxgratia.org'},
     ],
+    'sdpSemantics': 'unified-plan',
   };
 
   @override
@@ -150,6 +148,8 @@ class _CallPageState extends State<CallPage>
         });
       } else {
         _setStatus('Connecting...');
+        // Notify caller that we received the call and are ready
+        SignalingService.sendWsSignal('incoming_received', {'room_id': widget.roomId});
         SignalingService.sendWsSignal('receiver_ready', {
           'room_id': widget.roomId,
           'video_enabled': !_isCameraOff,
@@ -182,6 +182,12 @@ class _CallPageState extends State<CallPage>
             'room_id': widget.roomId,
             'video_enabled': !_isCameraOff,
           });
+        }
+        break;
+      case 'incoming_received':
+        if (widget.isCaller) {
+          debugPrint('Callee acknowledged receiving the call');
+          _setStatus('Ringing...');
         }
         break;
       case 'receiver_ready':
@@ -421,7 +427,23 @@ class _CallPageState extends State<CallPage>
     }
     await _audioPlayer.dispose();
 
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => CallEndedPage(
+            remoteUsername: widget.remoteUsername,
+            duration: _formatDurationLong(_callDuration),
+          ),
+        ),
+      );
+    }
+  }
+
+  String _formatDurationLong(int totalSeconds) {
+    int h = totalSeconds ~/ 3600;
+    int m = (totalSeconds % 3600) ~/ 60;
+    int s = totalSeconds % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
   void _setStatus(String status) {
