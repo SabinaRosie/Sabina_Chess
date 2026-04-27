@@ -5,7 +5,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../services/signaling_service.dart';
 import '../utils/color_utils.dart';
-import '../helper/helper.dart'; // Assuming Helper exists based on original code
+import '../helper/helper.dart';
 
 class CallPage extends StatefulWidget {
   final String roomId;
@@ -38,10 +38,13 @@ class _CallPageState extends State<CallPage>
   bool _isSpeakerOn = true;
   bool _isCameraOff = false;
   bool _isConnected = false;
+  bool _remoteVideoEnabled = false;
   String _callStatus = 'Initializing...';
   int _callDuration = 0;
   bool _hasError = false;
   bool _offerSent = false;
+  bool _callerReady = false;
+  bool _receiverReady = false;
   final List<RTCIceCandidate> _remoteCandidates = [];
 
   // Signaling
@@ -82,6 +85,7 @@ class _CallPageState extends State<CallPage>
   @override
   void initState() {
     super.initState();
+    _isCameraOff = widget.callType == 'audio';
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -125,27 +129,32 @@ class _CallPageState extends State<CallPage>
         return;
       }
 
-      _wsSubscription = stream.listen(_onWsMessage, onError: (e) {
-        debugPrint('WebSocket Error: $e');
-        _setStatus('Connection lost');
-      }, onDone: () {
-        debugPrint('WebSocket Closed');
-        if (!_disposed) _onUserOffline();
-      });
+      _wsSubscription = stream.listen(
+        _onWsMessage,
+        onError: (e) {
+          debugPrint('WebSocket Error: $e');
+          _setStatus('Connection lost');
+        },
+        onDone: () {
+          debugPrint('WebSocket Closed');
+          if (!_disposed) _onUserOffline();
+        },
+      );
 
       if (widget.isCaller) {
         _setStatus('Ringing ${widget.remoteUsername}...');
         _playSound(ringingUrl, loop: true);
-        // Notify server/callee that we are ready
-        SignalingService.sendWsSignal('caller_ready', {'room_id': widget.roomId});
+        SignalingService.sendWsSignal('caller_ready', {
+          'room_id': widget.roomId,
+          'video_enabled': !_isCameraOff,
+        });
       } else {
         _setStatus('Connecting...');
-        // Receiver sends answer if they already have an offer, 
-        // but usually the caller sends offer after receiver accepts.
-        // In our flow, receiver accepted on the previous page.
-        SignalingService.sendWsSignal('receiver_ready', {'room_id': widget.roomId});
+        SignalingService.sendWsSignal('receiver_ready', {
+          'room_id': widget.roomId,
+          'video_enabled': !_isCameraOff,
+        });
       }
-
     } catch (e) {
       debugPrint('Init call error: $e');
       _setStatus('Error: $e');
@@ -162,12 +171,33 @@ class _CallPageState extends State<CallPage>
     debugPrint('Received WS Signal: $type');
 
     switch (type) {
+      case 'caller_ready':
+        _callerReady = true;
+        if (mounted)
+          setState(
+            () => _remoteVideoEnabled = payload['video_enabled'] ?? false,
+          );
+        if (!widget.isCaller) {
+          SignalingService.sendWsSignal('receiver_ready', {
+            'room_id': widget.roomId,
+            'video_enabled': !_isCameraOff,
+          });
+        }
+        break;
       case 'receiver_ready':
+        _receiverReady = true;
+        if (mounted)
+          setState(
+            () => _remoteVideoEnabled = payload['video_enabled'] ?? false,
+          );
         if (widget.isCaller && !_offerSent) {
           _setStatus('Connecting...');
           _stopSound();
           await _createOffer();
         }
+        break;
+      case 'video_toggle':
+        if (mounted) setState(() => _remoteVideoEnabled = payload['enabled']);
         break;
       case 'offer':
         _setStatus('Connecting...');
@@ -210,18 +240,26 @@ class _CallPageState extends State<CallPage>
   Future<void> _setupLocalMedia() async {
     final Map<String, dynamic> constraints = {
       'audio': true,
-      'video': widget.callType == 'video'
+      'video': !_isCameraOff
           ? {'facingMode': 'user', 'width': 640, 'height': 480}
           : false,
     };
     try {
+      if (_localStream != null) {
+        for (var track in _localStream!.getTracks()) track.stop();
+        await _localStream!.dispose();
+      }
       _localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (_localRenderer != null) {
+        _localRenderer!.srcObject = _localStream;
+      }
     } catch (e) {
       debugPrint('Media Error: $e');
     }
   }
 
   Future<void> _createPeerConnection() async {
+    if (_peerConnection != null) return;
     _peerConnection = await createPeerConnection(_iceServers);
 
     if (_localStream != null) {
@@ -253,7 +291,8 @@ class _CallPageState extends State<CallPage>
       debugPrint('RTC Connection State: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         if (!_isConnected) _onUserJoined();
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+      } else if (state ==
+              RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
           state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
           state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         _onUserOffline();
@@ -262,7 +301,6 @@ class _CallPageState extends State<CallPage>
   }
 
   Future<void> _createOffer() async {
-    if (_offerSent) return;
     _offerSent = true;
     RTCSessionDescription offer = await _peerConnection!.createOffer();
     await _peerConnection!.setLocalDescription(offer);
@@ -279,6 +317,54 @@ class _CallPageState extends State<CallPage>
       'sdp': answer.sdp,
       'type': answer.type,
     });
+  }
+
+  Future<void> _renegotiate() async {
+    if (_peerConnection == null) return;
+
+    // Add new local tracks if they were added
+    if (_localStream != null) {
+      final senders = await _peerConnection!.getSenders();
+      for (var track in _localStream!.getTracks()) {
+        bool exists = senders.any((s) => s.track?.id == track.id);
+        if (!exists) {
+          await _peerConnection!.addTrack(track, _localStream!);
+        }
+      }
+    }
+
+    _offerSent = false;
+    await _createOffer();
+  }
+
+  Future<void> _toggleCamera() async {
+    if (_disposed || _peerConnection == null) return;
+
+    if (_isCameraOff) {
+      // Turn camera ON
+      setState(() => _isCameraOff = false);
+      await _setupLocalMedia();
+      await _renegotiate();
+    } else {
+      // Turn camera OFF
+      setState(() => _isCameraOff = true);
+      for (var track in _localStream!.getVideoTracks()) {
+        track.enabled = false;
+        track.stop();
+      }
+    }
+
+    SignalingService.sendWsSignal('video_toggle', {'enabled': !_isCameraOff});
+  }
+
+  Future<void> _switchCamera() async {
+    if (_localStream == null || _isCameraOff) return;
+    try {
+      final videoTrack = _localStream!.getVideoTracks().first;
+      await Helper.switchCamera(videoTrack);
+    } catch (e) {
+      debugPrint('Switch Camera Error: $e');
+    }
   }
 
   void _onUserJoined() {
@@ -345,7 +431,9 @@ class _CallPageState extends State<CallPage>
   Future<void> _playSound(String url, {bool loop = false}) async {
     try {
       await _audioPlayer.stop();
-      await _audioPlayer.setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.release);
+      await _audioPlayer.setReleaseMode(
+        loop ? ReleaseMode.loop : ReleaseMode.release,
+      );
       await _audioPlayer.play(UrlSource(url));
     } catch (e) {
       debugPrint('Audio Error: $e');
@@ -371,7 +459,10 @@ class _CallPageState extends State<CallPage>
 
   @override
   Widget build(BuildContext context) {
-    final isVideo = widget.callType == 'video';
+    final showRemoteVideo =
+        _isConnected && _remoteVideoEnabled && _remoteRenderer != null;
+    final showLocalVideo = !_isCameraOff && _localRenderer != null;
+
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
       body: Container(
@@ -385,35 +476,17 @@ class _CallPageState extends State<CallPage>
         child: SafeArea(
           child: Stack(
             children: [
-              if (isVideo && _isConnected && _remoteRenderer != null)
+              // Remote Video
+              if (showRemoteVideo)
                 Positioned.fill(
                   child: RTCVideoView(
                     _remoteRenderer!,
                     objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                   ),
                 ),
-              if (isVideo && !_isCameraOff && _localRenderer != null)
-                Positioned(
-                  top: 20,
-                  right: 20,
-                  width: 120,
-                  height: 170,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppColors.secondaryColor, width: 2),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: RTCVideoView(
-                        _localRenderer!,
-                        mirror: true,
-                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                      ),
-                    ),
-                  ),
-                ),
-              if (!isVideo || !_isConnected)
+
+              // Avatar/Status View (when video is off)
+              if (!showRemoteVideo || !_isConnected)
                 Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -421,7 +494,9 @@ class _CallPageState extends State<CallPage>
                       AnimatedBuilder(
                         animation: _pulseController,
                         builder: (context, child) {
-                          final scale = _isConnected ? 1.0 : 0.8 + (_pulseController.value * 0.4);
+                          final scale = _isConnected
+                              ? 1.0
+                              : 0.8 + (_pulseController.value * 0.4);
                           return Transform.scale(
                             scale: scale,
                             child: Container(
@@ -430,11 +505,16 @@ class _CallPageState extends State<CallPage>
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 gradient: const LinearGradient(
-                                  colors: [AppColors.primaryColor, AppColors.secondaryColor],
+                                  colors: [
+                                    AppColors.primaryColor,
+                                    AppColors.secondaryColor,
+                                  ],
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.secondaryColor.withOpacity(0.4),
+                                    color: AppColors.secondaryColor.withOpacity(
+                                      0.4,
+                                    ),
                                     blurRadius: 30,
                                     spreadRadius: 4,
                                   ),
@@ -442,8 +522,14 @@ class _CallPageState extends State<CallPage>
                               ),
                               child: Center(
                                 child: Text(
-                                  widget.remoteUsername.isNotEmpty ? widget.remoteUsername[0].toUpperCase() : '?',
-                                  style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.white),
+                                  widget.remoteUsername.isNotEmpty
+                                      ? widget.remoteUsername[0].toUpperCase()
+                                      : '?',
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
                             ),
@@ -453,19 +539,82 @@ class _CallPageState extends State<CallPage>
                       const SizedBox(height: 24),
                       Text(
                         widget.remoteUsername,
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        _isConnected ? _formatDuration(_callDuration) : _callStatus,
+                        _isConnected
+                            ? _formatDuration(_callDuration)
+                            : _callStatus,
                         style: TextStyle(
                           fontSize: 16,
-                          color: _isConnected ? Colors.greenAccent : _hasError ? Colors.redAccent : AppColors.textSecondary,
+                          color: _isConnected
+                              ? Colors.greenAccent
+                              : _hasError
+                              ? Colors.redAccent
+                              : AppColors.textSecondary,
                         ),
                       ),
                     ],
                   ),
                 ),
+
+              // Local Video (PiP)
+              if (showLocalVideo)
+                Positioned(
+                  top: 20,
+                  right: 20,
+                  width: 120,
+                  height: 170,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: AppColors.secondaryColor,
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.black26,
+                      ),
+                      child: Stack(
+                        children: [
+                          RTCVideoView(
+                            _localRenderer!,
+                            mirror: true,
+                            objectFit: RTCVideoViewObjectFit
+                                .RTCVideoViewObjectFitCover,
+                          ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: _switchCamera,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.black45,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.switch_camera,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Controls
               Positioned(
                 bottom: 40,
                 left: 0,
@@ -480,7 +629,8 @@ class _CallPageState extends State<CallPage>
                       onTap: () {
                         if (_localStream == null) return;
                         setState(() => _isMuted = !_isMuted);
-                        for (var track in _localStream!.getAudioTracks()) track.enabled = !_isMuted;
+                        for (var track in _localStream!.getAudioTracks())
+                          track.enabled = !_isMuted;
                       },
                     ),
                     _ctrlBtn(
@@ -498,21 +648,24 @@ class _CallPageState extends State<CallPage>
                       child: Container(
                         width: 64,
                         height: 64,
-                        decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                        child: const Icon(Icons.call_end, color: Colors.white, size: 32),
+                        decoration: const BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.call_end,
+                          color: Colors.white,
+                          size: 32,
+                        ),
                       ),
                     ),
-                    if (isVideo)
-                      _ctrlBtn(
-                        icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
-                        label: 'Cam',
-                        isActive: _isCameraOff,
-                        onTap: () {
-                          if (_localStream == null) return;
-                          setState(() => _isCameraOff = !_isCameraOff);
-                          for (var track in _localStream!.getVideoTracks()) track.enabled = !_isCameraOff;
-                        },
-                      ),
+                    _ctrlBtn(
+                      icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
+                      label: 'Cam',
+                      isActive: !_isCameraOff,
+                      activeColor: AppColors.secondaryColor,
+                      onTap: _toggleCamera,
+                    ),
                   ],
                 ),
               ),
@@ -539,14 +692,19 @@ class _CallPageState extends State<CallPage>
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: isActive ? activeColor.withOpacity(0.3) : Colors.white.withOpacity(0.15),
+              color: isActive
+                  ? activeColor.withOpacity(0.3)
+                  : Colors.white.withOpacity(0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: Colors.white, size: 24),
           ),
         ),
         const SizedBox(height: 6),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 11),
+        ),
       ],
     );
   }

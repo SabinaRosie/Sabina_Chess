@@ -23,7 +23,9 @@ class _UsersListPageState extends State<UsersListPage> {
   String? _accessToken;
   Timer? _incomingCallTimer;
   bool _isCallInitiating = false;
+  bool _isInitiatingCall = false; // Internal flag for UI feedback
   bool _isIncomingDialogShown = false;
+  String? _currentUsername;
   
   final AudioPlayer _ringtonePlayer = AudioPlayer();
   static const String ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3';
@@ -38,6 +40,7 @@ class _UsersListPageState extends State<UsersListPage> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     _accessToken = prefs.getString('accessToken');
+    _currentUsername = prefs.getString('username');
     await _fetchUsers();
     _startIncomingCallPolling();
   }
@@ -207,8 +210,9 @@ class _UsersListPageState extends State<UsersListPage> {
         if (!mounted) return;
         
         if (result['success']) {
+          final List fetchedUsers = result['data'];
           setState(() {
-            users = result['data'];
+            users = fetchedUsers.where((u) => u['username'] != _currentUsername).toList();
             isLoading = false;
             error = null;
           });
@@ -241,52 +245,61 @@ class _UsersListPageState extends State<UsersListPage> {
   }
 
   Future<void> _initiateCall(String username, String callType) async {
-    if (_accessToken == null || _isCallInitiating) return;
+    if (_accessToken == null || _isCallInitiating || _isInitiatingCall) return;
+    
+    setState(() => _isInitiatingCall = true);
     _isCallInitiating = true;
 
-    await _requestPermissions(callType);
+    try {
+      await _requestPermissions(callType);
 
-    final micStatus = await Permission.microphone.status;
-    if (!micStatus.isGranted) {
-      if (mounted) {
-        _showErrorDialog(context, "Microphone permission is required for calls.");
-      }
-      _isCallInitiating = false;
-      return;
-    }
-
-    if (callType == 'video') {
-      final camStatus = await Permission.camera.status;
-      if (!camStatus.isGranted) {
+      final micStatus = await Permission.microphone.status;
+      if (!micStatus.isGranted) {
         if (mounted) {
-          _showErrorDialog(context, "Camera permission is required for video calls.");
+          _showErrorDialog(context, "Microphone permission is required for calls.");
         }
+        setState(() => _isInitiatingCall = false);
         _isCallInitiating = false;
         return;
       }
-    }
 
-    // Create call on server
-    final result = await SignalingService.createCall(username, callType);
+      if (callType == 'video') {
+        final camStatus = await Permission.camera.status;
+        if (!camStatus.isGranted) {
+          if (mounted) {
+            _showErrorDialog(context, "Camera permission is required for video calls.");
+          }
+          setState(() => _isInitiatingCall = false);
+          _isCallInitiating = false;
+          return;
+        }
+      }
 
-    if (!mounted) {
+      // Create call on server
+      final result = await SignalingService.createCall(username, callType);
+
+      if (!mounted) {
+        _isCallInitiating = false;
+        return;
+      }
+
+      if (result['success']) {
+        final data = result['data'];
+        _navigateToCall(
+          roomId: data['room_id'],
+          remoteUsername: username,
+          callType: callType,
+          isCaller: true,
+        );
+      } else {
+        _showErrorDialog(context, result['error'] ?? 'Failed to create call');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isInitiatingCall = false);
+      }
       _isCallInitiating = false;
-      return;
     }
-
-    if (result['success']) {
-      final data = result['data'];
-      _navigateToCall(
-        roomId: data['room_id'],
-        remoteUsername: username,
-        callType: callType,
-        isCaller: true,
-      );
-    } else {
-      _showErrorDialog(context, result['error'] ?? 'Failed to create call');
-    }
-    
-    _isCallInitiating = false;
   }
 
   void _navigateToCall({
@@ -328,38 +341,59 @@ class _UsersListPageState extends State<UsersListPage> {
           )
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: AppColors.woodGradient,
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: AppColors.woodGradient,
+              ),
+            ),
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
+                : error != null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(error!, style: const TextStyle(color: Colors.red)),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _fetchUsers,
+                          child: const Text("Retry"),
+                        )
+                      ],
+                    ),
+                  )
+                : users.isEmpty
+                ? const Center(child: Text("No users found", style: TextStyle(color: Colors.white54)))
+                : ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: users.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) => _buildUserCard(users[index]),
+                  ),
           ),
-        ),
-        child: isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
-            : error != null
-            ? Center(
+          if (_isInitiatingCall)
+            Container(
+              color: Colors.black45,
+              child: const Center(
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(error!, style: const TextStyle(color: Colors.red)),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: _fetchUsers,
-                      child: const Text("Retry"),
-                    )
+                    CircularProgressIndicator(color: AppColors.secondaryColor),
+                    SizedBox(height: 16),
+                    Text(
+                      "Initiating call...",
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
                   ],
                 ),
-              )
-            : users.isEmpty
-            ? const Center(child: Text("No users found", style: TextStyle(color: Colors.white54)))
-            : ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: users.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 12),
-                itemBuilder: (context, index) => _buildUserCard(users[index]),
               ),
+            ),
+        ],
       ),
     );
   }
