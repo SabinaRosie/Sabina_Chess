@@ -51,6 +51,7 @@ class _CallPageState extends State<CallPage>
   // Signaling
   StreamSubscription? _wsSubscription;
   Timer? _durationTimer;
+  Timer? _heartbeatTimer;
   bool _disposed = false;
   bool _renderersInitialized = false;
 
@@ -64,7 +65,7 @@ class _CallPageState extends State<CallPage>
   // Animation
   late AnimationController _pulseController;
 
-  // 🔹 STUN + TURN Servers
+  // 🔹 STUN + TURN Servers (Crucial for different network connectivity)
   final Map<String, dynamic> _iceServers = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
@@ -72,24 +73,40 @@ class _CallPageState extends State<CallPage>
       {'urls': 'stun:stun2.l.google.com:19302'},
       {'urls': 'stun:stun3.l.google.com:19302'},
       {'urls': 'stun:stun4.l.google.com:19302'},
-      {'urls': 'stun:stun.ekiga.net'},
-      {'urls': 'stun:stun.ideasip.com'},
-      {'urls': 'stun:stun.schlund.de'},
-      {'urls': 'stun:stun.voxgratia.org'},
+      // Free Relay (TURN) - using a more stable pool
+      {
+        'urls': [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp'
+        ],
+        'username': 'openrelay',
+        'credential': 'openrelay',
+      },
     ],
     'sdpSemantics': 'unified-plan',
+    'iceCandidatePoolSize': 10,
+    'bundlePolicy': 'balanced',
+    'rtcpMuxPolicy': 'require',
   };
 
   @override
   void initState() {
     super.initState();
     _isCameraOff = widget.callType == 'audio';
+    _remoteVideoEnabled = widget.callType == 'video'; // Default to true for video calls
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
     _audioPlayer.setVolume(1.0);
     _initCall();
+  }
+
+  @override
+  void dispose() {
+    _leaveChannel();
+    super.dispose();
   }
 
   Future<void> _initCall() async {
@@ -131,13 +148,25 @@ class _CallPageState extends State<CallPage>
         _onWsMessage,
         onError: (e) {
           debugPrint('WebSocket Error: $e');
-          _setStatus('Connection lost');
         },
         onDone: () {
           debugPrint('WebSocket Closed');
-          if (!_disposed) _onUserOffline();
+          // 🔹 Only end call if WebRTC is NOT connected
+          if (!_disposed && !_isConnected) {
+            _onUserOffline();
+          }
         },
       );
+
+      // 🔹 Start Heartbeat (keep socket alive on HF Spaces)
+      _heartbeatTimer?.cancel();
+      _heartbeatTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
+        if (!_disposed) {
+          SignalingService.sendWsSignal('ping', {'room_id': widget.roomId});
+        } else {
+          timer.cancel();
+        }
+      });
 
       if (widget.isCaller) {
         _setStatus('Ringing ${widget.remoteUsername}...');
@@ -163,7 +192,7 @@ class _CallPageState extends State<CallPage>
   }
 
   void _onWsMessage(dynamic message) async {
-    if (_disposed) return;
+    if (_disposed || _peerConnection == null) return;
     final data = jsonDecode(message);
     final type = data['type'];
     final payload = data['data'];
@@ -275,9 +304,15 @@ class _CallPageState extends State<CallPage>
     }
 
     _peerConnection!.onTrack = (RTCTrackEvent event) {
+      debugPrint('Received Remote Track: ${event.track.kind}');
       if (event.streams.isNotEmpty && mounted && !_disposed) {
         if (_remoteRenderer != null) {
-          _remoteRenderer!.srcObject = event.streams[0];
+          setState(() {
+            _remoteRenderer!.srcObject = event.streams[0];
+            if (event.track.kind == 'video') {
+              _remoteVideoEnabled = true;
+            }
+          });
         }
         if (!_isConnected) _onUserJoined();
       }
@@ -285,6 +320,7 @@ class _CallPageState extends State<CallPage>
 
     _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
       if (!_disposed) {
+        debugPrint('Generated IceCandidate: ${candidate.candidate}');
         SignalingService.sendWsSignal('candidate', {
           'candidate': candidate.candidate,
           'sdpMid': candidate.sdpMid,
@@ -297,11 +333,16 @@ class _CallPageState extends State<CallPage>
       debugPrint('RTC Connection State: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         if (!_isConnected) _onUserJoined();
-      } else if (state ==
-              RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+                 state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         _onUserOffline();
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+        // Wait 10 seconds before ending, in case of a quick reconnection
+        Future.delayed(const Duration(seconds: 10), () {
+          if (mounted && !_disposed && !_isConnected) {
+            _onUserOffline();
+          }
+        });
       }
     };
   }
@@ -408,6 +449,7 @@ class _CallPageState extends State<CallPage>
     _stopSound();
     _wsSubscription?.cancel();
     _durationTimer?.cancel();
+    _heartbeatTimer?.cancel();
 
     if (notifyServer) {
       SignalingService.sendWsSignal('end_call', {'room_id': widget.roomId});
@@ -417,15 +459,29 @@ class _CallPageState extends State<CallPage>
     SignalingService.closeWebSocket();
 
     if (_localStream != null) {
-      for (var track in _localStream!.getTracks()) track.stop();
+      for (var track in _localStream!.getTracks()) {
+        track.stop();
+      }
       await _localStream!.dispose();
+      _localStream = null;
     }
-    if (_peerConnection != null) await _peerConnection!.close();
+
+    if (_peerConnection != null) {
+      await _peerConnection!.close();
+      await _peerConnection!.dispose();
+      _peerConnection = null;
+    }
+
     if (_renderersInitialized) {
       await _localRenderer?.dispose();
       await _remoteRenderer?.dispose();
+      _localRenderer = null;
+      _remoteRenderer = null;
+      _renderersInitialized = false;
     }
+
     await _audioPlayer.dispose();
+    _pulseController.dispose();
 
     if (mounted) {
       Navigator.of(context).pushReplacement(
@@ -472,12 +528,6 @@ class _CallPageState extends State<CallPage>
     return '$m:$s';
   }
 
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    if (!_disposed) _leaveChannel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {

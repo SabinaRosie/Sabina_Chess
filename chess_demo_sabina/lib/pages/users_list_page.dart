@@ -1,14 +1,11 @@
-import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:http/http.dart' as http;
+
 import '../services/api_service.dart';
 import '../services/signaling_service.dart';
 import '../utils/color_utils.dart';
-import 'call_page.dart';
+import '../utils/route_const.dart';
 
 class UsersListPage extends StatefulWidget {
   const UsersListPage({super.key});
@@ -22,15 +19,10 @@ class _UsersListPageState extends State<UsersListPage> {
   bool isLoading = true;
   String? error;
   String? _accessToken;
-  Timer? _incomingCallTimer;
   bool _isCallInitiating = false;
   bool _isInitiatingCall = false; // Internal flag for UI feedback
-  bool _isIncomingDialogShown = false;
   String? _currentUsername;
-  StreamSubscription? _notificationSubscription;
-  
-  final AudioPlayer _ringtonePlayer = AudioPlayer();
-  static const String ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3';
+  bool _isCallCooldown = false;
 
   @override
   void initState() {
@@ -53,169 +45,6 @@ class _UsersListPageState extends State<UsersListPage> {
     }
     
     await _fetchUsers();
-    _initNotifications();
-  }
-
-  @override
-  void dispose() {
-    _notificationSubscription?.cancel();
-    SignalingService.closeNotificationSocket();
-    _ringtonePlayer.dispose();
-    super.dispose();
-  }
-
-  void _initNotifications() async {
-    final stream = await SignalingService.connectNotificationSocket();
-    if (stream != null) {
-      _notificationSubscription = stream.listen((message) {
-        final data = jsonDecode(message);
-        if (data['type'] == 'incoming_call') {
-          final callData = data['data'];
-          if (!_isIncomingDialogShown && !_isCallInitiating) {
-            _isIncomingDialogShown = true;
-            _showIncomingCallDialog(
-              roomId: callData['room_id'],
-              callerName: callData['caller'],
-              callType: callData['call_type'],
-            );
-          }
-        } else if (data['type'] == 'call_cancelled') {
-          if (_isIncomingDialogShown) {
-            _ringtonePlayer.stop();
-            Navigator.of(context, rootNavigator: true).pop();
-            _isIncomingDialogShown = false;
-          }
-        }
-      }, onDone: () {
-        if (mounted) {
-          Future.delayed(const Duration(seconds: 5), _initNotifications);
-        }
-      }, onError: (e) {
-        if (mounted) {
-          Future.delayed(const Duration(seconds: 5), _initNotifications);
-        }
-      });
-    } else {
-      if (mounted) {
-        Future.delayed(const Duration(seconds: 5), _initNotifications);
-      }
-    }
-  }
-
-  void _showIncomingCallDialog({
-    required String roomId,
-    required String callerName,
-    required String callType,
-  }) {
-    _ringtonePlayer.setReleaseMode(ReleaseMode.loop);
-    _ringtonePlayer.play(UrlSource(ringtoneUrl));
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: AppColors.secondaryColor.withOpacity(0.4)),
-        ),
-        title: Column(
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [AppColors.primaryColor, AppColors.secondaryColor],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.secondaryColor.withOpacity(0.4),
-                    blurRadius: 20,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Text(
-                  callerName.isNotEmpty ? callerName[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              callerName,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Incoming ${callType == 'video' ? 'Video' : 'Audio'} Call',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.spaceEvenly,
-        actionsPadding: const EdgeInsets.only(bottom: 20),
-        actions: [
-          // Reject
-          GestureDetector(
-            onTap: () async {
-              _ringtonePlayer.stop();
-              Navigator.pop(ctx);
-              _isIncomingDialogShown = false;
-              await SignalingService.answerCall(roomId, 'reject');
-            },
-            child: Container(
-              width: 60,
-              height: 60,
-              decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-              child: const Icon(Icons.call_end, color: Colors.white, size: 28),
-            ),
-          ),
-
-          // Accept
-          GestureDetector(
-            onTap: () {
-              _ringtonePlayer.stop();
-              Navigator.pop(ctx);
-              _isIncomingDialogShown = false;
-              
-              _navigateToCall(
-                roomId: roomId,
-                remoteUsername: callerName,
-                callType: callType,
-                isCaller: false,
-              );
-              
-              SignalingService.answerCall(roomId, 'accept');
-            },
-            child: Container(
-              width: 60,
-              height: 60,
-              decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle),
-              child: Icon(
-                callType == 'video' ? Icons.videocam : Icons.call,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _fetchUsers() async {
@@ -267,9 +96,18 @@ class _UsersListPageState extends State<UsersListPage> {
   }
 
   Future<void> _initiateCall(String username, String callType) async {
-    if (_accessToken == null || _isCallInitiating || _isInitiatingCall) return;
+    if (_accessToken == null || _isCallInitiating || _isInitiatingCall || _isCallCooldown) return;
     
-    setState(() => _isInitiatingCall = true);
+    setState(() {
+      _isInitiatingCall = true;
+      _isCallCooldown = true;
+    });
+    
+    // Reset cooldown after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _isCallCooldown = false);
+    });
+
     _isCallInitiating = true;
 
     try {
@@ -330,17 +168,15 @@ class _UsersListPageState extends State<UsersListPage> {
     required String callType,
     required bool isCaller,
   }) {
-    _incomingCallTimer?.cancel(); 
-    Navigator.push(
+    Navigator.pushNamed(
       context,
-      MaterialPageRoute(
-        builder: (_) => CallPage(
-          roomId: roomId,
-          remoteUsername: remoteUsername,
-          callType: callType,
-          isCaller: isCaller,
-        ),
-      ),
+      Routes.callRoute,
+      arguments: {
+        'roomId': roomId,
+        'remoteUsername': remoteUsername,
+        'callType': callType,
+        'isCaller': isCaller,
+      },
     ).then((_) {
       if (mounted) {
         _fetchUsers();

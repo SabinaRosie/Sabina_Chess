@@ -5,6 +5,8 @@ import '../pages/splashscreen.dart';
 import '../pages/home_page.dart';
 import '../pages/profile_page.dart';
 import '../pages/forgot_password_page.dart';
+import '../pages/users_list_page.dart';
+import '../pages/call_page.dart';
 import '../screens/game_screen.dart';
 import 'route_const.dart';
 
@@ -31,6 +33,20 @@ class RouteGenerator {
 
       case Routes.forgotPasswordRoute:
         return MaterialPageRoute(builder: (_) => const ForgotPasswordPage());
+
+      case Routes.usersListRoute:
+        return MaterialPageRoute(builder: (_) => const UsersListPage());
+
+      case Routes.callRoute:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => CallPage(
+            roomId: args['roomId'],
+            remoteUsername: args['remoteUsername'],
+            callType: args['callType'],
+            isCaller: args['isCaller'],
+          ),
+        );
 
       default:
         return MaterialPageRoute(
