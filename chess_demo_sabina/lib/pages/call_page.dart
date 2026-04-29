@@ -46,12 +46,15 @@ class _CallPageState extends State<CallPage>
   bool _offerSent = false;
   bool _callerReady = false;
   bool _receiverReady = false;
+  bool _remoteDescriptionSet = false;
+  final Set<String> _addedCandidates = {};
   final List<RTCIceCandidate> _remoteCandidates = [];
 
   // Signaling
   StreamSubscription? _wsSubscription;
   Timer? _durationTimer;
   Timer? _heartbeatTimer;
+  Timer? _iceRestartTimer; // 🔹 ICE restart when stuck
   bool _disposed = false;
   bool _renderersInitialized = false;
 
@@ -65,29 +68,39 @@ class _CallPageState extends State<CallPage>
   // Animation
   late AnimationController _pulseController;
 
-  // 🔹 STUN + TURN Servers (Crucial for different network connectivity)
-  final Map<String, dynamic> _iceServers = {
+  // 🔹 ICE Servers — Matches working Manika project config
+  Map<String, dynamic> _iceServers = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun2.l.google.com:19302'},
       {'urls': 'stun:stun3.l.google.com:19302'},
       {'urls': 'stun:stun4.l.google.com:19302'},
-      // Free Relay (TURN) - using a more stable pool
+      {'urls': 'stun:stun.cloudflare.com:3478'},
+      {'urls': 'stun:stun.services.mozilla.com'},
       {
         'urls': [
           'turn:openrelay.metered.ca:80',
           'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp'
+          'turn:openrelay.metered.ca:3478',
         ],
-        'username': 'openrelay',
-        'credential': 'openrelay',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': [
+          'turns:openrelay.metered.ca:443?transport=tcp',
+          'turns:openrelay.metered.ca:3478?transport=tcp',
+        ],
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
       },
     ],
-    'sdpSemantics': 'unified-plan',
     'iceCandidatePoolSize': 10,
     'bundlePolicy': 'balanced',
     'rtcpMuxPolicy': 'require',
+    'sdpSemantics': 'unified-plan',
+    'iceTransportPolicy': 'all',
   };
 
   @override
@@ -133,6 +146,9 @@ class _CallPageState extends State<CallPage>
       if (_localRenderer != null) {
         _localRenderer!.srcObject = _localStream;
       }
+
+      // 🔹 Fetch fresh TURN credentials from backend
+      await _fetchTurnCredentials();
 
       await _createPeerConnection();
 
@@ -190,6 +206,32 @@ class _CallPageState extends State<CallPage>
       _hasError = true;
     }
   }
+  /// 🔹 Fetch fresh TURN credentials from backend (ephemeral, time-limited)
+  Future<void> _fetchTurnCredentials() async {
+    try {
+      final result = await SignalingService.getTurnCredentials();
+      if (result['success'] == true && result['data'] != null) {
+        final List<dynamic> servers = result['data']['ice_servers'];
+        
+        // 🔹 Update servers while PRESERVING critical policies
+        setState(() {
+          _iceServers = {
+            'iceServers': servers,
+            'iceCandidatePoolSize': 10,
+            'bundlePolicy': 'balanced',
+            'rtcpMuxPolicy': 'require',
+            'sdpSemantics': 'unified-plan',
+            'iceTransportPolicy': 'all',
+          };
+        });
+        debugPrint('🧲 TURN credentials fetched: ${servers.length} ICE servers (Policies applied)');
+      } else {
+        debugPrint('⚠️ TURN credential fetch failed, using hardcoded config');
+      }
+    } catch (e) {
+      debugPrint('❌ TURN credential fetch error: $e (using hardcoded config)');
+    }
+  }
 
   void _onWsMessage(dynamic message) async {
     if (_disposed || _peerConnection == null) return;
@@ -239,6 +281,7 @@ class _CallPageState extends State<CallPage>
         await _peerConnection!.setRemoteDescription(
           RTCSessionDescription(payload['sdp'], payload['type']),
         );
+        _remoteDescriptionSet = true;
         await _createAnswer();
         for (var c in _remoteCandidates) {
           await _peerConnection!.addCandidate(c);
@@ -249,18 +292,27 @@ class _CallPageState extends State<CallPage>
         await _peerConnection!.setRemoteDescription(
           RTCSessionDescription(payload['sdp'], payload['type']),
         );
+        _remoteDescriptionSet = true;
         for (var c in _remoteCandidates) {
           await _peerConnection!.addCandidate(c);
         }
         _remoteCandidates.clear();
         break;
       case 'candidate':
+        if (_addedCandidates.contains(payload['candidate'])) return;
+        _addedCandidates.add(payload['candidate']);
+
+        final sdpMLineIndex = payload['sdpMLineIndex'] is String
+            ? int.tryParse(payload['sdpMLineIndex'])
+            : payload['sdpMLineIndex'];
+            
         final candidate = RTCIceCandidate(
           payload['candidate'],
           payload['sdpMid'],
-          payload['sdpMLineIndex'],
+          sdpMLineIndex,
         );
-        if (_peerConnection!.getRemoteDescription() != null) {
+        
+        if (_peerConnection != null && _remoteDescriptionSet) {
           await _peerConnection!.addCandidate(candidate);
         } else {
           _remoteCandidates.add(candidate);
@@ -303,6 +355,12 @@ class _CallPageState extends State<CallPage>
       }
     }
 
+    // 🔹 Explicitly set transceiver direction (Unified Plan)
+    final transceivers = await _peerConnection!.getTransceivers();
+    for (var t in transceivers) {
+      await t.setDirection(TransceiverDirection.SendRecv);
+    }
+
     _peerConnection!.onTrack = (RTCTrackEvent event) {
       debugPrint('Received Remote Track: ${event.track.kind}');
       if (event.streams.isNotEmpty && mounted && !_disposed) {
@@ -319,9 +377,15 @@ class _CallPageState extends State<CallPage>
     };
 
     _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
-      if (!_disposed) {
-        debugPrint('Generated IceCandidate: ${candidate.candidate}');
+      if (!_disposed && candidate.candidate != null) {
+        // 🔹 Log candidate type (HOST/SRFLX/RELAY) for diagnostics
+        String type = 'unknown';
+        if (candidate.candidate!.contains('typ host')) type = 'HOST (Local)';
+        if (candidate.candidate!.contains('typ srflx')) type = 'SRFLX (Public IP)';
+        if (candidate.candidate!.contains('typ relay')) type = 'RELAY (TURN Server)';
+        debugPrint('🧲 ICE Candidate: $type');
         SignalingService.sendWsSignal('candidate', {
+          'room_id': widget.roomId,
           'candidate': candidate.candidate,
           'sdpMid': candidate.sdpMid,
           'sdpMLineIndex': candidate.sdpMLineIndex,
@@ -330,37 +394,114 @@ class _CallPageState extends State<CallPage>
     };
 
     _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
-      debugPrint('RTC Connection State: $state');
+      debugPrint('RTC Peer Connection State: ${state.toString()}');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         if (!_isConnected) _onUserJoined();
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-                 state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
-        _onUserOffline();
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-        // Wait 10 seconds before ending, in case of a quick reconnection
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        debugPrint('RTC Peer Connection FAILED - NAT traversal failed or timed out.');
+        // 🔹 Don't disconnect immediately. Let the ICE restart timer try to recover.
+        // We'll only exit if it stays failed for too long.
         Future.delayed(const Duration(seconds: 10), () {
           if (mounted && !_disposed && !_isConnected) {
-            _onUserOffline();
+             debugPrint('RTC Connection still failed after 10s. Closing call.');
+             _onUserOffline();
           }
         });
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        _onUserOffline();
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+        debugPrint('RTC Peer Connection DISCONNECTED - Attempting to remain in room...');
       }
     };
+
+    _peerConnection!.onIceConnectionState = (RTCIceConnectionState state) {
+      debugPrint('🧲 ICE Connection State: ${state.toString()}');
+      if (state == RTCIceConnectionState.RTCIceConnectionStateChecking) {
+        // 🔹 Start ICE restart timer (15s) in case ICE gets stuck
+        _startIceRestartTimer();
+      } else if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+                 state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        _stopIceRestartTimer();
+      } else if (state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
+                 state == RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
+        debugPrint('❌ ICE Connection Failed/Disconnected - attempting restart...');
+        _stopIceRestartTimer();
+        if (widget.isCaller && !_disposed) {
+          Future.delayed(const Duration(seconds: 2), () {
+            // 🔹 Allow restart even if initial connection never finished
+            if (!_disposed) _triggerIceRestart();
+          });
+        }
+      }
+    };
+
+    _peerConnection!.onIceGatheringState = (RTCIceGatheringState state) {
+      debugPrint('📡 ICE Gathering State: ${state.toString()}');
+    };
+  }
+
+  // 🔹 ICE Restart mechanism (ported from Manika project)
+  void _startIceRestartTimer() {
+    _iceRestartTimer?.cancel();
+    _iceRestartTimer = Timer(const Duration(seconds: 15), () {
+      if (_peerConnection != null && widget.isCaller && !_disposed) {
+        debugPrint('⏳ ICE stuck in checking for 15s. Triggering restart...');
+        _triggerIceRestart();
+      }
+    });
+  }
+
+  void _stopIceRestartTimer() {
+    _iceRestartTimer?.cancel();
+    _iceRestartTimer = null;
+  }
+
+  Future<void> _triggerIceRestart() async {
+    if (_peerConnection == null || !widget.isCaller || _disposed) return;
+    try {
+      debugPrint('🔄 ICE Restart: Creating new offer with iceRestart=true');
+      final offer = await _peerConnection!.createOffer({'iceRestart': true});
+      await _peerConnection!.setLocalDescription(offer);
+      SignalingService.sendWsSignal('offer', {
+        'room_id': widget.roomId,
+        'sdp': offer.sdp,
+        'type': offer.type,
+      });
+    } catch (e) {
+      debugPrint('❌ ICE Restart failed: $e');
+    }
   }
 
   Future<void> _createOffer() async {
     _offerSent = true;
-    RTCSessionDescription offer = await _peerConnection!.createOffer();
+    final constraints = {
+      'mandatory': {
+        'OfferToReceiveAudio': true,
+        'OfferToReceiveVideo': true,
+      },
+      'optional': [],
+    };
+    RTCSessionDescription offer = await _peerConnection!.createOffer(constraints);
     await _peerConnection!.setLocalDescription(offer);
     SignalingService.sendWsSignal('offer', {
+      'room_id': widget.roomId,
       'sdp': offer.sdp,
       'type': offer.type,
     });
   }
 
   Future<void> _createAnswer() async {
-    RTCSessionDescription answer = await _peerConnection!.createAnswer();
+    final constraints = {
+      'mandatory': {
+        'OfferToReceiveAudio': true,
+        'OfferToReceiveVideo': true,
+      },
+      'optional': [],
+    };
+    RTCSessionDescription answer = await _peerConnection!.createAnswer(constraints);
     await _peerConnection!.setLocalDescription(answer);
     SignalingService.sendWsSignal('answer', {
+      'room_id': widget.roomId,
       'sdp': answer.sdp,
       'type': answer.type,
     });
@@ -450,6 +591,7 @@ class _CallPageState extends State<CallPage>
     _wsSubscription?.cancel();
     _durationTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _iceRestartTimer?.cancel();
 
     if (notifyServer) {
       SignalingService.sendWsSignal('end_call', {'room_id': widget.roomId});

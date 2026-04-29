@@ -12,11 +12,14 @@ class NotificationService with WidgetsBindingObserver {
   NotificationService._internal() {
     WidgetsBinding.instance.addObserver(this);
     _configureAudio();
+    // 🔹 Pre-load ringtone to avoid delays in background
+    _ringtonePlayer.setSource(UrlSource(ringtoneUrl));
   }
 
   StreamSubscription? _wsSubscription;
   Timer? _pollingTimer;
   Timer? _reconnectTimer;
+  Timer? _heartbeatTimer; // 🔹 Added heartbeat
   bool _isIncomingDialogShown = false;
   final AudioPlayer _ringtonePlayer = AudioPlayer();
   static const String ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3';
@@ -25,16 +28,24 @@ class NotificationService with WidgetsBindingObserver {
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   void _configureAudio() {
-    // 🔹 Ensure ringtone is audible even if the app is in background
+    // 🔹 Highly aggressive audio context to ensure background audibility
     AudioPlayer.global.setAudioContext(AudioContext(
-      android: AudioContextAndroid(
+      android: const AudioContextAndroid(
         isSpeakerphoneOn: true,
         stayAwake: true,
         contentType: AndroidContentType.sonification,
-        usageType: AndroidUsageType.notificationRingtone,
-        audioFocus: AndroidAudioFocus.gainTransient,
+        usageType: AndroidUsageType.alarm, // 🔹 Alarm priority is higher than notification
+        audioFocus: AndroidAudioFocus.gain, // 🔹 Gain full focus for the ringtone
+      ),
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playback,
+        options: {
+          AVAudioSessionOptions.defaultToSpeaker,
+          AVAudioSessionOptions.allowBluetooth,
+        },
       ),
     ));
+    _ringtonePlayer.setVolume(1.0);
   }
 
   @override
@@ -49,6 +60,15 @@ class NotificationService with WidgetsBindingObserver {
   void init() {
     _initNotifications();
     _startPolling();
+    _startHeartbeat(); // 🔹 Start keeping the socket warm
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
+      // 🔹 Send a small ping to keep the connection active in background
+      SignalingService.sendNotificationPing();
+    });
   }
 
   Future<void> _checkOnce() async {
@@ -234,6 +254,7 @@ class NotificationService with WidgetsBindingObserver {
     _wsSubscription?.cancel();
     _pollingTimer?.cancel();
     _reconnectTimer?.cancel();
+    _heartbeatTimer?.cancel();
     _ringtonePlayer.dispose();
   }
 }

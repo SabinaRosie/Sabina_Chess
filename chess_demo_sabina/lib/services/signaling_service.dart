@@ -85,6 +85,13 @@ class SignalingService {
     _notificationChannel = null;
   }
 
+  /// 🔹 WebSocket: Send ping to notification socket
+  static void sendNotificationPing() {
+    if (_notificationChannel != null) {
+      _notificationChannel!.sink.add(jsonEncode({'type': 'ping'}));
+    }
+  }
+
   /// Wrapper to handle automatic token refresh and retry
   static Future<Map<String, dynamic>> _request(
     Future<http.Response> Function(Map<String, String> headers) action,
@@ -120,6 +127,14 @@ class SignalingService {
         'callee_username': calleeUsername,
         'call_type': callType,
       }),
+    ));
+  }
+
+  /// Fetch fresh TURN credentials from backend (ephemeral, time-limited)
+  static Future<Map<String, dynamic>> getTurnCredentials() async {
+    return _request((headers) => http.get(
+      Uri.parse('${AppConstants.baseUrl}/call/turn-credentials'),
+      headers: headers,
     ));
   }
 
