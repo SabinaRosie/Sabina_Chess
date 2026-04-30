@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dashboard_page.dart';
 import 'profile_page.dart';
 import 'users_list_page.dart';
+import 'conversations_page.dart';
 import '../utils/color_utils.dart';
 
 class HomePage extends StatefulWidget {
@@ -17,6 +18,7 @@ class _HomePageState extends State<HomePage> {
   final List<Widget> _pages = [
     const DashboardPage(),
     const UsersListPage(),
+    const ConversationsPage(),
     const ProfilePage(),
   ];
 
@@ -58,6 +60,10 @@ class _HomePageState extends State<HomePage> {
             BottomNavigationBarItem(
               icon: Icon(Icons.people_rounded),
               label: 'Community',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.chat_bubble_rounded),
+              label: 'Messages',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_rounded),

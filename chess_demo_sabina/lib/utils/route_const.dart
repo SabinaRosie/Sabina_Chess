@@ -8,4 +8,6 @@ class Routes {
   static const String profileRoute = "/profile";
   static const String usersListRoute = "/users-list";
   static const String callRoute = "/call";
+  static const String conversationsRoute = "/conversations";
+  static const String chatRoute = "/chat";
 }

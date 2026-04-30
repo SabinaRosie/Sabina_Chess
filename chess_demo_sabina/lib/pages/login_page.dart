@@ -280,10 +280,8 @@ class _LoginPageState extends State<LoginPage> {
                                   'refreshToken',
                                   result['data']['refresh'],
                                 );
-                                await prefs.setString(
-                                  'username',
-                                  username!,
-                                );
+                                await prefs.setString('username', username!);
+                                await prefs.setInt('userId', result['data']['user_id']);
 
                                 // 🔹 Also save credentials if rememberMe or for Biometric setup later
                                 await prefs.setString(

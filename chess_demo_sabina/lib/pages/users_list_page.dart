@@ -1,9 +1,11 @@
+import 'package:chess_demo_sabina/utils/route_generator.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../services/api_service.dart';
 import '../services/signaling_service.dart';
+import '../services/chat_service.dart';
 import '../utils/color_utils.dart';
 import '../utils/route_const.dart';
 
@@ -184,6 +186,28 @@ class _UsersListPageState extends State<UsersListPage> {
     });
   }
 
+  Future<void> _initiateChat(dynamic user) async {
+    final chatService = ChatService();
+    setState(() => _isInitiatingCall = true); // Reuse loading overlay
+    
+    final result = await chatService.startConversation(user['id']);
+    
+    setState(() => _isInitiatingCall = false);
+    
+    if (result['success']) {
+      if (mounted) {
+        RouteGenerator.navigateToPage(context, Routes.chatRoute, arguments: {
+          'conversationId': result['data']['id'],
+          'otherUser': result['data']['other_user'],
+        });
+      }
+    } else {
+      if (mounted) {
+        _showErrorDialog(context, result['error'] ?? 'Failed to start chat');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -279,6 +303,8 @@ class _UsersListPageState extends State<UsersListPage> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            _callActionBtn(Icons.chat, Colors.orange, () => _initiateChat(user)),
+            const SizedBox(width: 8),
             _callActionBtn(Icons.call, Colors.green, () => _initiateCall(user['username'], 'audio')),
             const SizedBox(width: 8),
             _callActionBtn(Icons.videocam, Colors.blue, () => _initiateCall(user['username'], 'video')),

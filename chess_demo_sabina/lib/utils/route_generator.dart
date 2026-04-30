@@ -7,6 +7,8 @@ import '../pages/profile_page.dart';
 import '../pages/forgot_password_page.dart';
 import '../pages/users_list_page.dart';
 import '../pages/call_page.dart';
+import '../pages/conversations_page.dart';
+import '../pages/chat_page.dart';
 import '../screens/game_screen.dart';
 import 'route_const.dart';
 
@@ -48,6 +50,18 @@ class RouteGenerator {
           ),
         );
 
+      case Routes.conversationsRoute:
+        return MaterialPageRoute(builder: (_) => const ConversationsPage());
+
+      case Routes.chatRoute:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => ChatPage(
+            conversationId: args['conversationId'],
+            otherUser: args['otherUser'],
+          ),
+        );
+
       default:
         return MaterialPageRoute(
           builder: (_) =>
@@ -56,8 +70,8 @@ class RouteGenerator {
     }
   }
 
-  static void navigateToPage(BuildContext context, String routeName) {
-    Navigator.pushNamed(context, routeName);
+  static void navigateToPage(BuildContext context, String routeName, {Object? arguments}) {
+    Navigator.pushNamed(context, routeName, arguments: arguments);
   }
 
   static void navigateToPageWithoutStack(
