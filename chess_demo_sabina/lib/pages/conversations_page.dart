@@ -14,25 +14,47 @@ class ConversationsPage extends StatefulWidget {
 
 class _ConversationsPageState extends State<ConversationsPage> {
   final ChatService _chatService = ChatService();
+  final TextEditingController _searchController = TextEditingController();
   List<dynamic> _conversations = [];
+  List<dynamic> _filteredConversations = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadConversations();
+    _searchController.addListener(_filterConversations);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadConversations();
   }
 
   Future<void> _loadConversations() async {
     final result = await _chatService.listConversations();
     if (result['success']) {
-      setState(() {
-        _conversations = result['data'];
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _conversations = result['data'];
+          _filteredConversations = _conversations;
+          _isLoading = false;
+        });
+      }
     } else {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _filterConversations() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredConversations = _conversations.where((conv) {
+        final username = conv['other_user']['username'].toString().toLowerCase();
+        return username.contains(query);
+      }).toList();
+    });
   }
 
   String _formatTime(String? timeStr) {
@@ -50,18 +72,20 @@ class _ConversationsPageState extends State<ConversationsPage> {
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
       appBar: AppBar(
-        title: const Text("Messages", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+        title: const Text("Messages", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold, fontSize: 24)),
         backgroundColor: AppColors.surfaceColor,
         elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: AppColors.secondaryColor),
-          onPressed: () => Navigator.pop(context),
-        ),
+        centerTitle: false,
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -71,31 +95,68 @@ class _ConversationsPageState extends State<ConversationsPage> {
             colors: AppColors.woodGradient,
           ),
         ),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
-            : _conversations.isEmpty
-                ? _buildEmptyState()
-                : RefreshIndicator(
-                    onRefresh: _loadConversations,
-                    color: AppColors.secondaryColor,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      itemCount: _conversations.length,
-                      itemBuilder: (context, index) {
-                        final conv = _conversations[index];
-                        final otherUser = conv['other_user'];
-                        final lastMsg = conv['last_message'] ?? "No messages yet";
-                        final unreadCount = conv['unread_count'] ?? 0;
+        child: Column(
+          children: [
+            _buildSearchBar(),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
+                  : _filteredConversations.isEmpty
+                      ? _buildEmptyState()
+                      : RefreshIndicator(
+                          onRefresh: _loadConversations,
+                          color: AppColors.secondaryColor,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.only(top: 10, bottom: 100), // ── 🔹 Extra space for scrolling past the button ──
+                            itemCount: _filteredConversations.length,
+                            itemBuilder: (context, index) {
+                              final conv = _filteredConversations[index];
+                              final otherUser = conv['other_user'];
+                              final lastMsg = conv['last_message'] ?? "No messages yet";
+                              final unreadCount = conv['unread_count'] ?? 0;
 
-                        return _buildConversationTile(conv, otherUser, lastMsg, unreadCount);
-                      },
-                    ),
-                  ),
+                              return _buildConversationTile(conv, otherUser, lastMsg, unreadCount);
+                            },
+                          ),
+                        ),
+            ),
+          ],
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppColors.secondaryColor,
-        onPressed: () => RouteGenerator.navigateToPage(context, Routes.usersListRoute),
-        child: const Icon(Icons.message, color: AppColors.backgroundColor),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 60), // ── 🔹 Lift button above Nav Bar ──
+        child: FloatingActionButton(
+          backgroundColor: AppColors.secondaryColor,
+          elevation: 4,
+          onPressed: () {
+            RouteGenerator.navigateToPage(context, Routes.usersListRoute);
+          },
+          child: const Icon(Icons.add_comment_rounded, color: AppColors.backgroundColor),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Container(
+        height: 45,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(25),
+        ),
+        child: TextField(
+          controller: _searchController,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: "Search or start new chat",
+            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 15),
+            prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.3), size: 20),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 11),
+          ),
+        ),
       ),
     );
   }
@@ -107,17 +168,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
         children: [
           Icon(Icons.chat_bubble_outline, size: 80, color: AppColors.textSecondary.withOpacity(0.3)),
           const SizedBox(height: 16),
-          const Text("No conversations yet", style: TextStyle(color: AppColors.textSecondary, fontSize: 18)),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.secondaryColor,
-              foregroundColor: AppColors.backgroundColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-            ),
-            onPressed: () => RouteGenerator.navigateToPage(context, Routes.usersListRoute),
-            child: const Text("Start Chatting"),
-          ),
+          const Text("No conversations found", style: TextStyle(color: AppColors.textSecondary, fontSize: 18)),
         ],
       ),
     );
@@ -129,44 +180,42 @@ class _ConversationsPageState extends State<ConversationsPage> {
         RouteGenerator.navigateToPage(context, Routes.chatRoute, arguments: {
           'conversationId': conv['id'],
           'otherUser': otherUser,
-        });
+        }).then((_) => _loadConversations());
       },
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       leading: Container(
-        width: 60,
-        height: 60,
+        width: 55,
+        height: 55,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: LinearGradient(
             colors: [AppColors.primaryColor, AppColors.secondaryColor.withOpacity(0.8)],
           ),
-          border: Border.all(color: AppColors.secondaryColor.withOpacity(0.3), width: 2),
+          border: Border.all(color: AppColors.secondaryColor.withOpacity(0.2), width: 1.5),
         ),
         child: Center(
           child: Text(
             otherUser['username'][0].toUpperCase(),
-            style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 22, color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),
       ),
       title: Text(
         otherUser['username'],
-        style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+        style: const TextStyle(color: AppColors.textPrimary, fontSize: 17, fontWeight: FontWeight.bold),
       ),
-      subtitle: Row(
-        children: [
-          Expanded(
-            child: Text(
-              lastMsg,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: unreadCount > 0 ? Colors.white : AppColors.textSecondary,
-                fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          lastMsg,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: unreadCount > 0 ? Colors.white : AppColors.textSecondary,
+            fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
           ),
-        ],
+        ),
       ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -174,14 +223,14 @@ class _ConversationsPageState extends State<ConversationsPage> {
         children: [
           Text(
             _formatTime(conv['last_message_time']),
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 8),
           if (unreadCount > 0)
             Container(
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(color: AppColors.secondaryColor, shape: BoxShape.circle),
-              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(color: AppColors.secondaryColor, borderRadius: BorderRadius.circular(10)),
+              constraints: const BoxConstraints(minWidth: 20),
               child: Text(
                 unreadCount.toString(),
                 textAlign: TextAlign.center,

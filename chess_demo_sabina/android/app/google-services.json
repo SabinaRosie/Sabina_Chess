@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "638052157300",
+    "project_id": "sabina-chess",
+    "storage_bucket": "sabina-chess.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:638052157300:android:857e154f3703f528fc8e21",
+        "android_client_info": {
+          "package_name": "com.sabina.chessdemo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAt_QpAmEun4TO68NW5nIW3pEnRw9IaxYQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

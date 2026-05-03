@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'signaling_service.dart';
 import '../utils/color_utils.dart';
 import '../utils/route_const.dart';
@@ -12,37 +14,34 @@ class NotificationService with WidgetsBindingObserver {
   NotificationService._internal() {
     WidgetsBinding.instance.addObserver(this);
     _configureAudio();
-    // 🔹 Pre-load ringtone to avoid delays in background
     _ringtonePlayer.setSource(UrlSource(ringtoneUrl));
   }
 
   StreamSubscription? _wsSubscription;
   Timer? _pollingTimer;
   Timer? _reconnectTimer;
-  Timer? _heartbeatTimer; // 🔹 Added heartbeat
+  Timer? _heartbeatTimer;
   bool _isIncomingDialogShown = false;
   final AudioPlayer _ringtonePlayer = AudioPlayer();
   static const String ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3';
 
-  // Global navigator key to show dialogs from anywhere
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  
+  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
   void _configureAudio() {
-    // 🔹 Highly aggressive audio context to ensure background audibility
     AudioPlayer.global.setAudioContext(AudioContext(
       android: const AudioContextAndroid(
         isSpeakerphoneOn: true,
         stayAwake: true,
         contentType: AndroidContentType.sonification,
-        usageType: AndroidUsageType.alarm, // 🔹 Alarm priority is higher than notification
-        audioFocus: AndroidAudioFocus.gain, // 🔹 Gain full focus for the ringtone
+        usageType: AndroidUsageType.alarm,
+        audioFocus: AndroidAudioFocus.gain,
       ),
       iOS: AudioContextIOS(
         category: AVAudioSessionCategory.playback,
-        options: {
-          AVAudioSessionOptions.defaultToSpeaker,
-          AVAudioSessionOptions.allowBluetooth,
-        },
+        options: {AVAudioSessionOptions.defaultToSpeaker, AVAudioSessionOptions.allowBluetooth},
       ),
     ));
     _ringtonePlayer.setVolume(1.0);
@@ -51,22 +50,112 @@ class NotificationService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // 🔹 Immediately check for calls when returning to foreground
       _checkOnce();
-      _initNotifications(); // Re-establish socket if dropped
+      _initNotifications(); 
     }
   }
 
   void init() {
+    _initFirebase();
+    _setupLocalNotifications();
     _initNotifications();
     _startPolling();
-    _startHeartbeat(); // 🔹 Start keeping the socket warm
+    _startHeartbeat();
+  }
+
+  void _initFirebase() async {
+    NotificationSettings settings = await _fcm.requestPermission(
+      alert: true, badge: true, sound: true,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      String? token = await _fcm.getToken();
+      if (token != null) {
+        _registerToken(token);
+      }
+
+      _fcm.onTokenRefresh.listen(_registerToken);
+
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        if (message.data['type'] == 'incoming_call') {
+          _handleIncomingCall(message.data);
+        } else {
+          _showLocalNotification(message);
+        }
+      });
+
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        _handleNotificationTap(message.data);
+      });
+    }
+  }
+
+  void _registerToken(String token) async {
+    await SignalingService.registerFcmToken(token);
+  }
+
+  void _setupLocalNotifications() async {
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings();
+    
+    const initializationSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+    
+    await _localNotifications.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse details) {
+        if (details.payload != null) {
+          final data = jsonDecode(details.payload!);
+          _handleNotificationTap(data);
+        }
+      },
+    );
+  }
+
+  void _showLocalNotification(RemoteMessage message) async {
+    final notification = message.notification;
+    final data = message.data;
+
+    const androidPlatformChannelSpecifics = AndroidNotificationDetails(
+      'chat_messages', 'Chat Messages',
+      importance: Importance.max,
+      priority: Priority.high,
+      showWhen: true,
+      color: AppColors.secondaryColor,
+      enableLights: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          'reply', 'Reply',
+          inputs: [AndroidNotificationActionInput(label: 'Type your message...')],
+        ),
+        AndroidNotificationAction('mark_read', 'Mark as read'),
+      ],
+    );
+
+    const NotificationDetails platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
+
+    await _localNotifications.show(
+      notification?.hashCode ?? DateTime.now().millisecond,
+      notification?.title ?? data['sender'] ?? "New Message",
+      notification?.body ?? data['content'] ?? "",
+      platformChannelSpecifics,
+      payload: jsonEncode(data),
+    );
+  }
+
+  void _handleNotificationTap(Map<String, dynamic> data) {
+    if (data['type'] == 'chat') {
+      // Future implementation for direct navigation
+    } else if (data['type'] == 'incoming_call') {
+      _handleIncomingCall(data);
+    }
   }
 
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
-      // 🔹 Send a small ping to keep the connection active in background
       SignalingService.sendNotificationPing();
     });
   }
@@ -92,6 +181,8 @@ class NotificationService with WidgetsBindingObserver {
             _handleIncomingCall(data['data']);
           } else if (data['type'] == 'call_cancelled') {
             _cancelIncomingCall();
+          } else if (data['type'] == 'chat_notification') {
+            _handleChatNotification(data['data']);
           }
         },
         onDone: _reconnect,
@@ -136,30 +227,18 @@ class NotificationService with WidgetsBindingObserver {
         backgroundColor: AppColors.surfaceColor,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(28),
-          side: BorderSide(color: AppColors.secondaryColor.withValues(alpha: 0.3), width: 1.5),
+          side: BorderSide(color: AppColors.secondaryColor.withOpacity(0.3), width: 1.5),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 10),
-            // Animated Avatar Placeholder
             Container(
-              width: 100,
-              height: 100,
+              width: 100, height: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [AppColors.primaryColor, AppColors.secondaryColor.withValues(alpha: 0.8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.secondaryColor.withValues(alpha: 0.2),
-                    blurRadius: 20,
-                    spreadRadius: 5,
-                  )
-                ],
+                gradient: const LinearGradient(colors: [AppColors.primaryColor, AppColors.secondaryColor]),
+                boxShadow: [BoxShadow(color: AppColors.secondaryColor.withOpacity(0.2), blurRadius: 20, spreadRadius: 5)],
               ),
               child: Center(
                 child: Text(
@@ -169,64 +248,36 @@ class NotificationService with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 25),
-            Text(
-              data['caller'] ?? "Unknown",
-              style: const TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold),
-            ),
+            Text(data['caller'] ?? "Unknown", style: const TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text(
-              "Incoming ${data['call_type'] == 'video' ? 'Video' : 'Audio'} Call",
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 16),
-            ),
+            Text("Incoming ${data['call_type'] == 'video' ? 'Video' : 'Audio'} Call", style: const TextStyle(color: AppColors.textSecondary, fontSize: 16)),
             const SizedBox(height: 30),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                // Reject Button
                 GestureDetector(
                   onTap: () {
-                    _ringtonePlayer.stop();
-                    _isIncomingDialogShown = false;
-                    Navigator.pop(ctx);
+                    _ringtonePlayer.stop(); _isIncomingDialogShown = false; Navigator.pop(ctx);
                     SignalingService.answerCall(data['room_id'], 'reject');
                   },
                   child: Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
-                    ),
+                    decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: Colors.redAccent.withOpacity(0.5))),
                     child: const Icon(Icons.call_end, color: Colors.redAccent, size: 32),
                   ),
                 ),
-                // Accept Button
                 GestureDetector(
                   onTap: () {
-                    _ringtonePlayer.stop();
-                    _isIncomingDialogShown = false;
-                    Navigator.pop(ctx);
+                    _ringtonePlayer.stop(); _isIncomingDialogShown = false; Navigator.pop(ctx);
                     SignalingService.answerCall(data['room_id'], 'accept');
-                    
                     navigatorKey.currentState?.pushNamed(Routes.callRoute, arguments: {
-                      'roomId': data['room_id'],
-                      'remoteUsername': data['caller'],
-                      'callType': data['call_type'],
-                      'isCaller': false,
+                      'roomId': data['room_id'], 'remoteUsername': data['caller'], 'callType': data['call_type'], 'isCaller': false,
                     });
                   },
                   child: Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.greenAccent.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.5)),
-                    ),
-                    child: Icon(
-                      data['call_type'] == 'video' ? Icons.videocam : Icons.call,
-                      color: Colors.greenAccent,
-                      size: 32,
-                    ),
+                    decoration: BoxDecoration(color: Colors.greenAccent.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: Colors.greenAccent.withOpacity(0.5))),
+                    child: Icon(data['call_type'] == 'video' ? Icons.videocam : Icons.call, color: Colors.greenAccent, size: 32),
                   ),
                 ),
               ],
@@ -234,6 +285,35 @@ class NotificationService with WidgetsBindingObserver {
             const SizedBox(height: 10),
           ],
         ),
+      ),
+    );
+  }
+
+  void _handleChatNotification(Map<String, dynamic> data) {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.surfaceColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: AppColors.secondaryColor, width: 0.5)),
+        content: Row(
+          children: [
+            const Icon(Icons.chat_bubble_outline, color: AppColors.secondaryColor, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(data['sender'] ?? "New Message", style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text(data['content'] ?? "", style: const TextStyle(color: Colors.white, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
+        action: SnackBarAction(label: "REPLY", textColor: AppColors.secondaryColor, onPressed: () {}),
       ),
     );
   }

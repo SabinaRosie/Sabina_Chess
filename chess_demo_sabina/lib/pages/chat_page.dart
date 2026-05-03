@@ -1,21 +1,19 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/chat_service.dart';
+import '../services/signaling_service.dart';
 import '../utils/color_utils.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
 import 'package:intl/intl.dart';
 
 class ChatPage extends StatefulWidget {
-  final String conversationId;
+  final String? conversationId;
   final Map<String, dynamic> otherUser;
 
-  const ChatPage({
-    super.key,
-    required this.conversationId,
-    required this.otherUser,
-  });
+  const ChatPage({super.key, this.conversationId, required this.otherUser});
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -31,46 +29,84 @@ class _ChatPageState extends State<ChatPage> {
   bool _hasMore = true;
   int _currentUserId = 0;
   bool _isOtherUserTyping = false;
+  bool _isConnected = false;
+  bool _isHistoryLoading = true; // 🕒 New state for initial history load
+  bool _isCallInitiating = false; // 🎥 New state for call loading
   Timer? _typingTimer;
+  String? _currentConversationId;
+  
+  StreamSubscription? _messageSubscription;
+  StreamSubscription? _statusSubscription;
 
   @override
   void initState() {
     super.initState();
+    _currentConversationId = widget.conversationId;
+    _isConnected = _chatService.isConnected;
     _init();
-    _chatService.connectToChat(widget.conversationId);
-    _chatService.messageStream.listen(_handleWsMessage);
     _scrollController.addListener(_onScroll);
   }
 
   Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
     _currentUserId = prefs.getInt('userId') ?? 0;
+    
+    _statusSubscription = _chatService.connectionStatusStream.listen((status) {
+      if (mounted) setState(() => _isConnected = status);
+    });
 
-    final result = await _chatService.getMessages(widget.conversationId);
-    if (result['success']) {
-      setState(() {
-        _messages = result['data']['messages'];
-        _hasMore = result['data']['has_more'];
-      });
-      _chatService.markAsSeen(widget.conversationId);
-      _chatService.sendReadReceipt();
+    if (_currentConversationId == null) {
+      final otherUserId = widget.otherUser['id'];
+      if (otherUserId == null) return;
+      
+      final startRes = await _chatService.startConversation(otherUserId);
+      if (startRes['success']) {
+        if (mounted) setState(() => _currentConversationId = startRes['data']['id']);
+      }
+    }
+
+    setState(() => _isHistoryLoading = true);
+    _loadHistory();
+    _chatService.connectToChat(_currentConversationId!);
+    _messageSubscription?.cancel();
+    _messageSubscription = _chatService.messageStream.listen(_handleWsMessage);
+  }
+
+  Future<void> _loadHistory() async {
+    if (_currentConversationId == null) {
+      setState(() => _isHistoryLoading = false);
+      return;
+    }
+    final result = await _chatService.getMessages(_currentConversationId!);
+    if (mounted) {
+      if (result['success']) {
+        setState(() {
+          _messages = result['data']['messages'];
+          _hasMore = result['data']['has_more'];
+          _isHistoryLoading = false;
+        });
+        _scrollToBottom(immediate: true);
+        _chatService.markAsSeen(_currentConversationId!);
+        _chatService.sendReadReceipt();
+      } else {
+        setState(() => _isHistoryLoading = false);
+      }
     }
   }
 
   void _handleWsMessage(Map<String, dynamic> data) {
     if (!mounted) return;
-    
     if (data['type'] == 'message') {
       setState(() {
-        _messages.add(data['message']);
+        _messages.removeWhere((m) => m['is_optimistic'] == true && m['content'] == data['message']['content']);
+        bool alreadyExists = _messages.any((m) => m['id'] == data['message']['id']);
+        if (!alreadyExists) _messages.add(data['message']);
       });
       _scrollToBottom();
       _chatService.sendReadReceipt();
     } else if (data['type'] == 'typing') {
       if (data['user_id'] != _currentUserId) {
         setState(() => _isOtherUserTyping = data['is_typing']);
-        
-        // Auto-clear typing indicator after 3 seconds of no new typing events
         _typingTimer?.cancel();
         if (data['is_typing']) {
           _typingTimer = Timer(const Duration(seconds: 3), () {
@@ -82,9 +118,7 @@ class _ChatPageState extends State<ChatPage> {
       if (data['user_id'] != _currentUserId) {
         setState(() {
           for (var msg in _messages) {
-            if (msg['sender_id'] == _currentUserId) {
-              msg['status'] = 'seen';
-            }
+            if (msg['sender_id'] == _currentUserId) msg['status'] = 'seen';
           }
         });
       }
@@ -93,20 +127,15 @@ class _ChatPageState extends State<ChatPage> {
 
   void _onScroll() {
     if (_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
-      if (_hasMore && !_isLoadingMore) {
-        _loadMoreMessages();
-      }
+      if (_hasMore && !_isLoadingMore && _currentConversationId != null) _loadMoreMessages();
     }
   }
 
   Future<void> _loadMoreMessages() async {
-    if (_messages.isEmpty) return;
-    
     setState(() => _isLoadingMore = true);
     final before = _messages.first['created_at'];
-    final result = await _chatService.getMessages(widget.conversationId, before: before);
-    
-    if (result['success']) {
+    final result = await _chatService.getMessages(_currentConversationId!, before: before);
+    if (result['success'] && mounted) {
       setState(() {
         _messages.insertAll(0, result['data']['messages']);
         _hasMore = result['data']['has_more'];
@@ -119,25 +148,61 @@ class _ChatPageState extends State<ChatPage> {
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
     
+    final optimisticMsg = {
+      'id': DateTime.now().millisecondsSinceEpoch,
+      'sender_id': _currentUserId,
+      'content': content,
+      'message_type': 'text',
+      'status': 'sending',
+      'created_at': DateTime.now().toIso8601String(),
+      'is_optimistic': true,
+    };
+
+    setState(() => _messages.add(optimisticMsg));
+    _scrollToBottom();
     _messageController.clear();
     _chatService.sendMessage(content);
     _chatService.sendTyping(false);
   }
 
-  void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
+  Future<void> _initiateCall(String callType) async {
+    setState(() => _isCallInitiating = true); // Start blur
+    
+    final username = widget.otherUser['username'];
+    final result = await SignalingService.createCall(username, callType);
+    
+    if (!mounted) return;
+    
+    if (result['success']) {
+      final data = result['data'];
+      await RouteGenerator.navigateToPage(context, Routes.callRoute, arguments: {
+        'roomId': data['room_id'],
+        'remoteUsername': username,
+        'callType': callType,
+        'isCaller': true,
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Call failed: ${result['error']}"))
+      );
+    }
+    
+    if (mounted) setState(() => _isCallInitiating = false); // End blur
+  }
+
+  void _scrollToBottom({bool immediate = false}) {
+    Future.delayed(Duration(milliseconds: immediate ? 0 : 100), () {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        if (immediate) _scrollController.jumpTo(0);
+        else _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
     });
   }
 
   @override
   void dispose() {
+    _statusSubscription?.cancel();
+    _messageSubscription?.cancel();
     _chatService.disconnect();
     _messageController.dispose();
     _scrollController.dispose();
@@ -152,6 +217,7 @@ class _ChatPageState extends State<ChatPage> {
       appBar: AppBar(
         backgroundColor: AppColors.surfaceColor,
         elevation: 0,
+        shape: const Border(bottom: BorderSide(color: Colors.white10, width: 1)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: AppColors.secondaryColor),
           onPressed: () => Navigator.pop(context),
@@ -172,56 +238,80 @@ class _ChatPageState extends State<ChatPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(widget.otherUser['username'], style: const TextStyle(color: AppColors.textPrimary, fontSize: 16)),
-                  if (_isOtherUserTyping)
-                    const Text("typing...", style: TextStyle(color: AppColors.secondaryColor, fontSize: 11)),
+                  Text(
+                    _isOtherUserTyping ? "typing..." : (_isConnected ? "online" : "connecting..."),
+                    style: TextStyle(
+                      color: _isOtherUserTyping || _isConnected ? AppColors.secondaryColor : Colors.white54,
+                      fontSize: 11
+                    ),
+                  ),
                 ],
               ),
             ),
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.call, color: AppColors.secondaryColor),
-            onPressed: () {
-              // Implementation placeholder for calling integration
-            },
-          ),
+          IconButton(icon: const Icon(Icons.call, color: AppColors.secondaryColor), onPressed: () => _initiateCall('audio')),
+          IconButton(icon: const Icon(Icons.videocam, color: AppColors.secondaryColor), onPressed: () => _initiateCall('video')),
+          const SizedBox(width: 8),
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: AppColors.woodGradient,
-          ),
-        ),
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                reverse: true,
-                padding: const EdgeInsets.all(16),
-                itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == _messages.length) {
-                    return const Center(child: Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: CircularProgressIndicator(color: AppColors.secondaryColor),
-                    ));
-                  }
-                  
-                  // Messages are displayed in reverse order (newest at bottom)
-                  final msg = _messages[_messages.length - 1 - index];
-                  final bool isMe = msg['sender_id'] == _currentUserId;
-                  return _buildMessageBubble(msg, isMe);
-                },
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: AppColors.woodGradient,
               ),
             ),
-            _buildInputArea(),
-          ],
-        ),
+            child: Column(
+              children: [
+                Expanded(
+                  child: _isHistoryLoading 
+                    ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
+                    : ListView.builder(
+                        controller: _scrollController,
+                        reverse: true,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index == _messages.length) return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: AppColors.secondaryColor)));
+                          final msg = _messages[_messages.length - 1 - index];
+                          final bool isMe = msg['sender_id'].toString() == _currentUserId.toString();
+                          return _buildMessageBubble(msg, isMe);
+                        },
+                      ),
+                ),
+                _buildInputArea(),
+              ],
+            ),
+          ),
+          // 🎥 Premium Call Loading Overlay
+          if (_isCallInitiating)
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  color: Colors.black.withOpacity(0.4),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: AppColors.secondaryColor, strokeWidth: 3),
+                        const SizedBox(height: 24),
+                        Text(
+                          "Connecting Call...",
+                          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 10)]),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -241,37 +331,22 @@ class _ChatPageState extends State<ChatPage> {
             bottomLeft: Radius.circular(isMe ? 20 : 0),
             bottomRight: Radius.circular(isMe ? 0 : 20),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            )
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              msg['content'],
-              style: TextStyle(color: isMe ? AppColors.backgroundColor : AppColors.textPrimary, fontSize: 15),
-            ),
+            Text(msg['content'], style: TextStyle(color: isMe ? AppColors.backgroundColor : AppColors.textPrimary, fontSize: 15)),
             const SizedBox(height: 4),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   DateFormat('HH:mm').format(DateTime.parse(msg['created_at']).toLocal()),
-                  style: TextStyle(
-                    color: (isMe ? AppColors.backgroundColor : AppColors.textSecondary).withOpacity(0.7),
-                    fontSize: 10,
-                  ),
+                  style: TextStyle(color: (isMe ? AppColors.backgroundColor : AppColors.textSecondary).withOpacity(0.7), fontSize: 10),
                 ),
-                if (isMe) ...[
-                  const SizedBox(width: 4),
-                  _buildStatusIcon(msg['status']),
-                ],
+                if (isMe) ...[const SizedBox(width: 4), _buildStatusIcon(msg['status'])],
               ],
             ),
           ],
@@ -284,17 +359,10 @@ class _ChatPageState extends State<ChatPage> {
     IconData icon;
     Color color;
     switch (status) {
-      case 'seen':
-        icon = Icons.done_all;
-        color = AppColors.backgroundColor;
-        break;
-      case 'delivered':
-        icon = Icons.done_all;
-        color = AppColors.backgroundColor.withOpacity(0.5);
-        break;
-      default:
-        icon = Icons.done;
-        color = AppColors.backgroundColor.withOpacity(0.5);
+      case 'seen': icon = Icons.done_all; color = AppColors.backgroundColor; break;
+      case 'delivered': icon = Icons.done_all; color = AppColors.backgroundColor.withOpacity(0.5); break;
+      case 'sending': icon = Icons.access_time; color = AppColors.backgroundColor.withOpacity(0.5); break;
+      default: icon = Icons.done; color = AppColors.backgroundColor.withOpacity(0.5);
     }
     return Icon(icon, size: 14, color: color);
   }
@@ -302,25 +370,17 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildInputArea() {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceColor,
-        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
-      ),
+      decoration: BoxDecoration(color: AppColors.surfaceColor, border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05)))),
       child: SafeArea(
         child: Row(
           children: [
             Expanded(
               child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(25),
-                ),
+                decoration: BoxDecoration(color: Colors.black.withOpacity(0.2), borderRadius: BorderRadius.circular(25)),
                 child: TextField(
                   controller: _messageController,
                   style: const TextStyle(color: Colors.white),
-                  onChanged: (val) {
-                    _chatService.sendTyping(val.isNotEmpty);
-                  },
+                  onChanged: (val) => _chatService.sendTyping(val.isNotEmpty),
                   decoration: const InputDecoration(
                     hintText: "Type a message...",
                     hintStyle: TextStyle(color: Colors.white38),

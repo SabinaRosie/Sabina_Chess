@@ -21,10 +21,7 @@ class _UsersListPageState extends State<UsersListPage> {
   bool isLoading = true;
   String? error;
   String? _accessToken;
-  bool _isCallInitiating = false;
-  bool _isInitiatingCall = false; // Internal flag for UI feedback
   String? _currentUsername;
-  bool _isCallCooldown = false;
 
   @override
   void initState() {
@@ -62,7 +59,6 @@ class _UsersListPageState extends State<UsersListPage> {
         if (result['success']) {
           final List fetchedUsers = result['data'];
           setState(() {
-            // Case-insensitive filtering for robustness
             users = fetchedUsers.where((u) => 
               u['username'].toString().toLowerCase() != _currentUsername?.toLowerCase()
             ).toList();
@@ -90,130 +86,20 @@ class _UsersListPageState extends State<UsersListPage> {
     }
   }
 
-  Future<void> _requestPermissions(String callType) async {
-    await Permission.microphone.request();
-    if (callType == 'video') {
-      await Permission.camera.request();
-    }
-  }
-
-  Future<void> _initiateCall(String username, String callType) async {
-    if (_accessToken == null || _isCallInitiating || _isInitiatingCall || _isCallCooldown) return;
-    
-    setState(() {
-      _isInitiatingCall = true;
-      _isCallCooldown = true;
+  void _initiateChat(dynamic user) {
+    RouteGenerator.navigateToPage(context, Routes.chatRoute, arguments: {
+      'conversationId': null,
+      'otherUser': user,
     });
-    
-    // Reset cooldown after 3 seconds
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _isCallCooldown = false);
-    });
-
-    _isCallInitiating = true;
-
-    try {
-      await _requestPermissions(callType);
-
-      final micStatus = await Permission.microphone.status;
-      if (!micStatus.isGranted) {
-        if (mounted) {
-          _showErrorDialog(context, "Microphone permission is required for calls.");
-        }
-        setState(() => _isInitiatingCall = false);
-        _isCallInitiating = false;
-        return;
-      }
-
-      if (callType == 'video') {
-        final camStatus = await Permission.camera.status;
-        if (!camStatus.isGranted) {
-          if (mounted) {
-            _showErrorDialog(context, "Camera permission is required for video calls.");
-          }
-          setState(() => _isInitiatingCall = false);
-          _isCallInitiating = false;
-          return;
-        }
-      }
-
-      // Create call on server
-      final result = await SignalingService.createCall(username, callType);
-
-      if (!mounted) {
-        _isCallInitiating = false;
-        return;
-      }
-
-      if (result['success']) {
-        final data = result['data'];
-        _navigateToCall(
-          roomId: data['room_id'],
-          remoteUsername: username,
-          callType: callType,
-          isCaller: true,
-        );
-      } else {
-        _showErrorDialog(context, result['error'] ?? 'Failed to create call');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isInitiatingCall = false);
-      }
-      _isCallInitiating = false;
-    }
-  }
-
-  void _navigateToCall({
-    required String roomId,
-    required String remoteUsername,
-    required String callType,
-    required bool isCaller,
-  }) {
-    Navigator.pushNamed(
-      context,
-      Routes.callRoute,
-      arguments: {
-        'roomId': roomId,
-        'remoteUsername': remoteUsername,
-        'callType': callType,
-        'isCaller': isCaller,
-      },
-    ).then((_) {
-      if (mounted) {
-        _fetchUsers();
-      }
-    });
-  }
-
-  Future<void> _initiateChat(dynamic user) async {
-    final chatService = ChatService();
-    setState(() => _isInitiatingCall = true); // Reuse loading overlay
-    
-    final result = await chatService.startConversation(user['id']);
-    
-    setState(() => _isInitiatingCall = false);
-    
-    if (result['success']) {
-      if (mounted) {
-        RouteGenerator.navigateToPage(context, Routes.chatRoute, arguments: {
-          'conversationId': result['data']['id'],
-          'otherUser': result['data']['other_user'],
-        });
-      }
-    } else {
-      if (mounted) {
-        _showErrorDialog(context, result['error'] ?? 'Failed to start chat');
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.backgroundColor,
       appBar: AppBar(
-        title: const Text("Community Users", style: TextStyle(color: AppColors.textPrimary)),
-        backgroundColor: AppColors.backgroundColor,
+        title: const Text("Community Users", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.surfaceColor,
         elevation: 0,
         actions: [
           IconButton(
@@ -222,59 +108,38 @@ class _UsersListPageState extends State<UsersListPage> {
           )
         ],
       ),
-      body: Stack(
-        children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: AppColors.woodGradient,
-              ),
-            ),
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
-                : error != null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(error!, style: const TextStyle(color: Colors.red)),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _fetchUsers,
-                          child: const Text("Retry"),
-                        )
-                      ],
-                    ),
-                  )
-                : users.isEmpty
-                ? const Center(child: Text("No users found", style: TextStyle(color: Colors.white54)))
-                : ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: users.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) => _buildUserCard(users[index]),
-                  ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: AppColors.woodGradient,
           ),
-          if (_isInitiatingCall)
-            Container(
-              color: Colors.black45,
-              child: const Center(
+        ),
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
+            : error != null
+            ? Center(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CircularProgressIndicator(color: AppColors.secondaryColor),
-                    SizedBox(height: 16),
-                    Text(
-                      "Initiating call...",
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
+                    Text(error!, style: const TextStyle(color: Colors.red)),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _fetchUsers,
+                      child: const Text("Retry"),
+                    )
                   ],
                 ),
+              )
+            : users.isEmpty
+            ? const Center(child: Text("No users found", style: TextStyle(color: Colors.white54)))
+            : ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: users.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 12),
+                itemBuilder: (context, index) => _buildUserCard(users[index]),
               ),
-            ),
-        ],
       ),
     );
   }
@@ -284,69 +149,65 @@ class _UsersListPageState extends State<UsersListPage> {
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.07),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: ListTile(
+        onTap: () => _initiateChat(user),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        leading: CircleAvatar(
-          backgroundColor: AppColors.secondaryColor.withOpacity(0.2),
-          child: Text(
-            user['username'][0].toUpperCase(),
-            style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold),
+        leading: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.secondaryColor.withOpacity(0.15),
+            border: Border.all(color: AppColors.secondaryColor.withOpacity(0.3), width: 1.5),
+          ),
+          child: Center(
+            child: Text(
+              user['username'][0].toUpperCase(),
+              style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+            ),
           ),
         ),
         title: Text(
           user['username'],
           style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        subtitle: Text(user['email'], style: const TextStyle(color: Colors.white54, fontSize: 13)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _callActionBtn(Icons.chat, Colors.orange, () => _initiateChat(user)),
-            const SizedBox(width: 8),
-            _callActionBtn(Icons.call, Colors.green, () => _initiateCall(user['username'], 'audio')),
-            const SizedBox(width: 8),
-            _callActionBtn(Icons.videocam, Colors.blue, () => _initiateCall(user['username'], 'video')),
+        // Email removed as per request
+        trailing: PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
+          color: AppColors.surfaceColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          onSelected: (value) {
+            if (value == 'chat') {
+              _initiateChat(user);
+            } else if (value == 'profile') {
+              RouteGenerator.navigateToPage(context, Routes.publicProfileRoute, arguments: {'user': user});
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'chat',
+              child: Row(
+                children: [
+                  Icon(Icons.chat, color: AppColors.secondaryColor, size: 20),
+                  SizedBox(width: 12),
+                  Text("Message", style: TextStyle(color: Colors.white)),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'profile',
+              child: Row(
+                children: [
+                  Icon(Icons.person, color: AppColors.textSecondary, size: 20),
+                  SizedBox(width: 12),
+                  Text("View Profile", style: TextStyle(color: Colors.white)),
+                ],
+              ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _callActionBtn(IconData icon, Color color, VoidCallback onPressed) {
-    return Container(
-      decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
-      child: IconButton(
-        icon: Icon(icon, color: color.withOpacity(0.8), size: 20),
-        onPressed: onPressed,
-      ),
-    );
-  }
-
-  void _showErrorDialog(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline_rounded, color: Colors.redAccent),
-            SizedBox(width: 10),
-            Text("Error", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondaryColor)),
-          ),
-        ],
       ),
     );
   }

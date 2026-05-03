@@ -10,11 +10,11 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage>
-    with SingleTickerProviderStateMixin {
+class _DashboardPageState extends State<DashboardPage> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
+  bool _showInfo = false; // ── Toggle for description ──
 
   @override
   void initState() {
@@ -40,6 +40,7 @@ class _DashboardPageState extends State<DashboardPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent, // Allow gradient to show through
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(
@@ -60,7 +61,6 @@ class _DashboardPageState extends State<DashboardPage>
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     const SizedBox(height: 44),
-
                     // ── Chess King Icon ──
                     Container(
                       width: 116,
@@ -81,15 +81,10 @@ class _DashboardPageState extends State<DashboardPage>
                         ],
                       ),
                       child: const Center(
-                        child: Text(
-                          '♔',
-                          style: TextStyle(fontSize: 54, color: Colors.white),
-                        ),
+                        child: Text('♔', style: TextStyle(fontSize: 54, color: Colors.white)),
                       ),
                     ),
-
                     const SizedBox(height: 28),
-
                     // ── Title ──
                     const Text(
                       'Welcome to Chess',
@@ -101,9 +96,7 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                       textAlign: TextAlign.center,
                     ),
-
                     const SizedBox(height: 10),
-
                     // ── Gold accent line ──
                     Container(
                       width: 56,
@@ -113,51 +106,71 @@ class _DashboardPageState extends State<DashboardPage>
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-
                     const SizedBox(height: 28),
 
-                    // ── Description Card ──
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.07),
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.12),
+                    // ── Description Card (Collapsible) ──
+                    GestureDetector(
+                      onTap: () => setState(() => _showInfo = !_showInfo),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.07),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: Colors.white.withOpacity(_showInfo ? 0.2 : 0.12)),
                         ),
-                      ),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'The Game of Kings',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.secondaryColor,
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'The Game of Kings',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.secondaryColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(
+                                  _showInfo ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                  color: AppColors.secondaryColor,
+                                  size: 20,
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 14),
-                          const Text(
-                            'Chess is one of the world\'s most beloved strategy '
-                            'games, enjoyed by millions for over 1,500 years. '
-                            'It is a battle of minds — two players, 32 pieces, '
-                            'and an infinite number of possibilities.\n\n'
-                            'Anticipate your opponent\'s moves, protect your King, '
-                            'and control the board. Whether you\'re a beginner or '
-                            'a grandmaster in the making, every move tells a story.',
-                            style: TextStyle(
-                              fontSize: 14.5,
-                              color: AppColors.textSecondary,
-                              height: 1.75,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
+                            if (_showInfo) ...[
+                              const SizedBox(height: 14),
+                              const Text(
+                                'Chess is one of the world\'s most beloved strategy '
+                                'games, enjoyed by millions for over 1,500 years. '
+                                'It is a battle of minds — two players, 32 pieces, '
+                                'and an infinite number of possibilities.\n\n'
+                                'Anticipate your opponent\'s moves, protect your King, '
+                                'and control the board. Whether you\'re a beginner or '
+                                'a grandmaster in the making, every move tells a story.',
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  color: AppColors.textSecondary,
+                                  height: 1.75,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ] else ...[
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Tap to learn about the game',
+                                style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontStyle: FontStyle.italic),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
 
                     const SizedBox(height: 24),
-
                     // ── Stats Row ──
                     Row(
                       children: [
@@ -168,26 +181,19 @@ class _DashboardPageState extends State<DashboardPage>
                         _statCard('🏆', 'Victory', 'Claim\ncheckmate'),
                       ],
                     ),
-
                     const SizedBox(height: 36),
-
                     // ── Start Playing Button ──
                     SizedBox(
                       width: double.infinity,
                       height: 58,
                       child: ElevatedButton(
                         onPressed: () {
-                          RouteGenerator.navigateToPage(
-                            context,
-                            Routes.gameRoute,
-                          );
+                          RouteGenerator.navigateToPage(context, Routes.gameRoute);
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primaryColor,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(32),
-                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
                           elevation: 10,
                           shadowColor: AppColors.primaryColor.withOpacity(0.5),
                         ),
@@ -198,17 +204,12 @@ class _DashboardPageState extends State<DashboardPage>
                             SizedBox(width: 8),
                             Text(
                               'Start Playing',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
+                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5),
                             ),
                           ],
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 36),
                   ],
                 ),
@@ -233,20 +234,9 @@ class _DashboardPageState extends State<DashboardPage>
           children: [
             Text(emoji, style: const TextStyle(fontSize: 26)),
             const SizedBox(height: 6),
-            Text(
-              title,
-              style: const TextStyle(
-                color: AppColors.secondaryColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
+            Text(title, style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: const TextStyle(color: Colors.white54, fontSize: 11),
-              textAlign: TextAlign.center,
-            ),
+            Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 11), textAlign: TextAlign.center),
           ],
         ),
       ),

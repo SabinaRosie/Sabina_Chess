@@ -15,9 +15,16 @@ class ChatService {
   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get messageStream => _messageController.stream;
 
+  final _connectionStatusController = StreamController<bool>.broadcast();
+  Stream<bool> get connectionStatusStream => _connectionStatusController.stream;
+
   String? _activeConversationId;
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
+  bool _isConnected = false;
+  final List<Map<String, dynamic>> _messageQueue = [];
+
+  bool get isConnected => _isConnected;
 
   // --- API Methods ---
 
@@ -46,6 +53,19 @@ class ChatService {
     ));
   }
 
+  Future<int> getTotalUnreadCount() async {
+    final result = await listConversations();
+    if (result['success']) {
+      final List conversations = result['data'];
+      int total = 0;
+      for (var conv in conversations) {
+        total += (conv['unread_count'] as int? ?? 0);
+      }
+      return total;
+    }
+    return 0;
+  }
+
   Future<Map<String, dynamic>> markAsSeen(String conversationId) async {
     return _request((headers) => http.post(
       Uri.parse('${AppConstants.baseUrl}/chat/seen/$conversationId'),
@@ -56,7 +76,7 @@ class ChatService {
   // --- WebSocket Methods ---
 
   Future<void> connectToChat(String conversationId) async {
-    if (_activeConversationId == conversationId && _chatChannel != null) return;
+    if (_activeConversationId == conversationId && _chatChannel != null && _isConnected) return;
     
     _activeConversationId = conversationId;
     _reconnectAttempts = 0;
@@ -78,21 +98,50 @@ class ChatService {
           .replaceFirst('http://', 'ws://')
           .replaceFirst('/api', '/ws/chat/$_activeConversationId/');
 
+      print("Connecting to Chat WS: $wsUrl");
+
       _chatChannel = WebSocketChannel.connect(
         Uri.parse('$wsUrl?token=$token'),
       );
 
       _wsSubscription = _chatChannel!.stream.listen(
         (data) {
+          if (!_isConnected) _setConnected(true);
           _reconnectAttempts = 0;
           final decoded = jsonDecode(data);
           _messageController.add(decoded);
         },
-        onDone: () => _handleReconnect(),
-        onError: (e) => _handleReconnect(),
+        onDone: () {
+          _setConnected(false);
+          _handleReconnect();
+        },
+        onError: (e) {
+          _setConnected(false);
+          _handleReconnect();
+        },
       );
+      
+      // Send ping immediately
+      _chatChannel!.sink.add(jsonEncode({'type': 'ping'}));
+      
+      // Fallback: Assume connected after 500ms if no error
+      Timer(const Duration(milliseconds: 500), () {
+        if (_chatChannel != null && !_isConnected) {
+          _setConnected(true);
+        }
+      });
+      
     } catch (e) {
+      _setConnected(false);
       _handleReconnect();
+    }
+  }
+
+  void _setConnected(bool status) {
+    _isConnected = status;
+    _connectionStatusController.add(status);
+    if (status) {
+      _flushQueue();
     }
   }
 
@@ -102,25 +151,43 @@ class ChatService {
     _reconnectTimer?.cancel();
     _reconnectAttempts++;
     
-    // Exponential backoff: 2s, 4s, 8s... up to 30s
-    int delay = (_reconnectAttempts * 2).clamp(2, 30);
+    int delay = (_reconnectAttempts * 2).clamp(2, 20);
     _reconnectTimer = Timer(Duration(seconds: delay), () {
       _establishConnection();
     });
   }
 
-  void sendMessage(String content, {String type = 'text'}) {
-    if (_chatChannel != null) {
-      _chatChannel!.sink.add(jsonEncode({
-        'type': 'message',
-        'content': content,
-        'message_type': type,
-      }));
+  Future<void> sendMessage(String content, {String type = 'text'}) async {
+    final msg = {
+      'type': 'message',
+      'content': content,
+      'message_type': type,
+    };
+
+    if (!_isConnected || _chatChannel == null) {
+      _messageQueue.add(msg);
+      await _establishConnection();
+      // Wait a bit for connection to stabilize
+      int retry = 0;
+      while (!_isConnected && retry < 10) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        retry++;
+      }
+    } else {
+      _chatChannel!.sink.add(jsonEncode(msg));
+    }
+  }
+
+  void _flushQueue() {
+    if (!_isConnected || _chatChannel == null) return;
+    while (_messageQueue.isNotEmpty) {
+      final msg = _messageQueue.removeAt(0);
+      _chatChannel!.sink.add(jsonEncode(msg));
     }
   }
 
   void sendTyping(bool isTyping) {
-    if (_chatChannel != null) {
+    if (_isConnected && _chatChannel != null) {
       _chatChannel!.sink.add(jsonEncode({
         'type': 'typing',
         'is_typing': isTyping,
@@ -129,7 +196,7 @@ class ChatService {
   }
 
   void sendReadReceipt() {
-    if (_chatChannel != null) {
+    if (_isConnected && _chatChannel != null) {
       _chatChannel!.sink.add(jsonEncode({
         'type': 'read',
       }));
@@ -142,9 +209,9 @@ class ChatService {
     _chatChannel?.sink.close();
     _chatChannel = null;
     _activeConversationId = null;
+    _setConnected(false);
+    _messageQueue.clear();
   }
-
-  // --- Helpers ---
 
   Future<Map<String, dynamic>> _request(
     Future<http.Response> Function(Map<String, String> headers) action,

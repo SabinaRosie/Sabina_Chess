@@ -9,6 +9,7 @@ import '../pages/users_list_page.dart';
 import '../pages/call_page.dart';
 import '../pages/conversations_page.dart';
 import '../pages/chat_page.dart';
+import '../pages/public_profile_page.dart';
 import '../screens/game_screen.dart';
 import 'route_const.dart';
 
@@ -62,6 +63,12 @@ class RouteGenerator {
           ),
         );
 
+      case Routes.publicProfileRoute:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => PublicProfilePage(user: args['user']),
+        );
+
       default:
         return MaterialPageRoute(
           builder: (_) =>
@@ -70,8 +77,8 @@ class RouteGenerator {
     }
   }
 
-  static void navigateToPage(BuildContext context, String routeName, {Object? arguments}) {
-    Navigator.pushNamed(context, routeName, arguments: arguments);
+  static Future<dynamic> navigateToPage(BuildContext context, String routeName, {Object? arguments}) {
+    return Navigator.pushNamed(context, routeName, arguments: arguments);
   }
 
   static void navigateToPageWithoutStack(
