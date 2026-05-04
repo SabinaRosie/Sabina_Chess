@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chess_demo_sabina/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
@@ -15,14 +16,30 @@ class FriendSelectionPage extends StatefulWidget {
 
 class _FriendSelectionPageState extends State<FriendSelectionPage> {
   List<dynamic> users = [];
+  List<dynamic> pendingInvitations = [];
   bool isLoading = true;
   String? error;
   String? _accessToken;
+  StreamSubscription? _invitationSub;
 
   @override
   void initState() {
     super.initState();
-    _fetchUsers();
+    _fetchData();
+    _invitationSub = NotificationService().invitationCountStream.listen((_) {
+      _fetchPendingInvitations();
+    });
+  }
+
+  @override
+  void dispose() {
+    _invitationSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchData() async {
+    await _fetchUsers();
+    await _fetchPendingInvitations();
   }
 
   Future<void> _fetchUsers() async {
@@ -54,6 +71,16 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
     }
   }
 
+  Future<void> _fetchPendingInvitations() async {
+    if (_accessToken == null) return;
+    final result = await ApiService.getPendingInvitations(_accessToken!);
+    if (mounted && result['success']) {
+      setState(() {
+        pendingInvitations = result['data'];
+      });
+    }
+  }
+
   void _showInviteDialog(dynamic user) {
     showDialog(
       context: context,
@@ -65,7 +92,7 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
           style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold),
         ),
         content: const Text(
-          "An invitation will be sent immediately. They will have 60 seconds to respond.",
+          "An invitation will be sent immediately.",
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -105,121 +132,175 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
   }
 
   void _showWaitingDialog(dynamic user, dynamic invitationId) {
-    int timeLeft = 60;
-    Timer? timer;
-    bool invitationCancelled = false;
-
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          timer ??= Timer.periodic(const Duration(seconds: 1), (t) {
-            if (timeLeft > 0) {
-              setDialogState(() => timeLeft--);
-            } else {
-              t.cancel();
-              if (Navigator.canPop(context)) Navigator.pop(context);
-              _showTimeoutMessage(user['username']);
-            }
-          });
-
-          return AlertDialog(
-            backgroundColor: AppColors.surfaceColor,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 10),
-                const CircularProgressIndicator(color: AppColors.secondaryColor),
-                const SizedBox(height: 24),
-                Text(
-                  "Waiting for ${user['username']}...",
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  "Closing in ${timeLeft}s",
-                  style: const TextStyle(color: Colors.white54, fontSize: 14),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      invitationCancelled = true;
-                      timer?.cancel();
-                      await ApiService.cancelInvitation(_accessToken!, invitationId);
-                      if (context.mounted) Navigator.pop(context);
-                    },
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.redAccent),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text("Cancel Invitation", style: TextStyle(color: Colors.redAccent)),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    ).then((_) {
-      timer?.cancel();
-    });
-  }
-
-  void _showTimeoutMessage(String username) {
-    showDialog(
-      context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("No Response", style: TextStyle(color: AppColors.secondaryColor)),
-        content: Text("$username did not respond in time.", style: const TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK", style: TextStyle(color: AppColors.secondaryColor)),
-          ),
-        ],
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            const CircularProgressIndicator(color: AppColors.secondaryColor),
+            const SizedBox(height: 24),
+            Text(
+              "Waiting for ${user['username']}...",
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "Invitation sent",
+              style: TextStyle(color: Colors.white54, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () async {
+                  await ApiService.cancelInvitation(_accessToken!, invitationId);
+                  if (context.mounted) Navigator.pop(context);
+                },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.redAccent),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text("Cancel Invitation", style: TextStyle(color: Colors.redAccent)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: const Text("Select a Friend", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
-        backgroundColor: AppColors.surfaceColor,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.secondaryColor),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: AppColors.woodGradient,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text("Chess Challenges", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+          backgroundColor: AppColors.surfaceColor,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.secondaryColor),
+            onPressed: () => Navigator.pop(context),
+          ),
+          bottom: const TabBar(
+            indicatorColor: AppColors.secondaryColor,
+            labelColor: AppColors.secondaryColor,
+            unselectedLabelColor: Colors.white38,
+            labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            tabs: [
+              Tab(text: "Select User", icon: Icon(Icons.person_search_rounded)),
+              Tab(text: "Pending", icon: Icon(Icons.hourglass_empty_rounded)),
+            ],
           ),
         ),
-        child: isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
-            : error != null
-                ? Center(child: Text(error!, style: const TextStyle(color: Colors.red)))
-                : users.isEmpty
-                    ? const Center(child: Text("No other users found", style: TextStyle(color: Colors.white54)))
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(20),
-                        itemCount: users.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) => _buildUserCard(users[index]),
-                      ),
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: AppColors.woodGradient,
+            ),
+          ),
+          child: isLoading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
+              : error != null
+                  ? Center(child: Text(error!, style: const TextStyle(color: Colors.red)))
+                  : TabBarView(
+                      children: [
+                        _buildUserList(),
+                        _buildPendingList(),
+                      ],
+                    ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserList() {
+    if (users.isEmpty) {
+      return const Center(child: Text("No other users found", style: TextStyle(color: Colors.white54)));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(20),
+      itemCount: users.length,
+      itemBuilder: (context, index) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: _buildUserCard(users[index]),
+      ),
+    );
+  }
+
+  Widget _buildPendingList() {
+    if (pendingInvitations.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inbox_rounded, color: Colors.white24, size: 64),
+            SizedBox(height: 16),
+            Text("No pending invitations.", style: TextStyle(color: Colors.white38, fontSize: 16)),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(20),
+      itemCount: pendingInvitations.length,
+      itemBuilder: (context, index) => _buildPendingInvitationCard(pendingInvitations[index]),
+    );
+  }
+
+  Widget _buildPendingInvitationCard(dynamic inv) {
+    final sender = inv['sender'];
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.secondaryColor.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.secondaryColor.withOpacity(0.3)),
+      ),
+      child: ListTile(
+        onTap: () {
+          Navigator.pushNamed(
+            context,
+            Routes.gameInvitationRoute,
+            arguments: {
+              'invitationId': inv['id'],
+              'senderId': sender['id'],
+              'senderUsername': sender['username'],
+            },
+          );
+        },
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.secondaryColor.withOpacity(0.5), width: 1.5),
+          ),
+          child: Center(
+            child: Text(
+              sender['username'][0].toUpperCase(),
+              style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+          ),
+        ),
+        title: Text(
+          sender['username'],
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          "Sent ${DateTime.now().difference(DateTime.parse(inv['created_at'].toString())).inMinutes}m ago",
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.secondaryColor, size: 16),
       ),
     );
   }

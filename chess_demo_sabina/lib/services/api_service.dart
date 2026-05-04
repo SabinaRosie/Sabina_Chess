@@ -300,4 +300,20 @@ class ApiService {
       return {'success': false, 'error': e.toString()};
     }
   }
+
+  static Future<Map<String, dynamic>> getPendingInvitations(String accessToken) async {
+    final url = Uri.parse('${AppConstants.baseUrl}/game/invitations/pending');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      );
+      return _handleResponse(response, 'Failed to fetch pending invitations');
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }

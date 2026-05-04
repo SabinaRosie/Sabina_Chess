@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:chess_demo_sabina/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
@@ -10,11 +13,13 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> with SingleTickerProviderStateMixin {
+class _DashboardPageState extends State<DashboardPage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
   bool _showInfo = false; // ── Toggle for description ──
+  int _invitationCount = 0;
+  StreamSubscription? _invitationSub;
 
   @override
   void initState() {
@@ -29,10 +34,26 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
+    
+    WidgetsBinding.instance.addObserver(this);
+    _invitationSub = NotificationService().invitationCountStream.listen((count) {
+      if (mounted) setState(() => _invitationCount = count);
+    });
+    // Initial fetch
+    _invitationCount = NotificationService().currentInvitationCount;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      NotificationService().updateInvitationCount();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _invitationSub?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -175,26 +196,57 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                     SizedBox(
                       width: double.infinity,
                       height: 58,
-                      child: OutlinedButton(
-                        onPressed: () {
-                          RouteGenerator.navigateToPage(context, Routes.friendSelectionRoute);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.secondaryColor, width: 2),
-                          foregroundColor: AppColors.secondaryColor,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.people_alt_rounded, size: 24),
-                            SizedBox(width: 10),
-                            Text(
-                              'Play with Friends',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            height: 58,
+                            child: OutlinedButton(
+                              onPressed: () {
+                                NotificationService().clearInvitationCount();
+                                RouteGenerator.navigateToPage(context, Routes.friendSelectionRoute);
+                              },
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: AppColors.secondaryColor, width: 2),
+                                foregroundColor: AppColors.secondaryColor,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.people_alt_rounded, size: 24),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Play with Friends',
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ],
-                        ),
+                          ),
+                          if (_invitationCount > 0)
+                            Positioned(
+                              right: 2,
+                              top: 2,
+                              child: Container(
+                                width: 14,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: Colors.redAccent,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppColors.surfaceColor, width: 2),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.redAccent.withOpacity(0.5),
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
 

@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:chess_demo_sabina/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'signaling_service.dart';
 import '../utils/color_utils.dart';
 import '../utils/route_const.dart';
@@ -24,6 +26,11 @@ class NotificationService with WidgetsBindingObserver {
   bool _isIncomingDialogShown = false;
   final AudioPlayer _ringtonePlayer = AudioPlayer();
   static const String ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3';
+
+  final StreamController<int> _invitationCountController = StreamController<int>.broadcast();
+  Stream<int> get invitationCountStream => _invitationCountController.stream;
+  int _currentInvitationCount = 0;
+  int get currentInvitationCount => _currentInvitationCount;
 
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   
@@ -65,6 +72,7 @@ class NotificationService with WidgetsBindingObserver {
     _initNotifications();
     _startPolling();
     _startHeartbeat();
+    updateInvitationCount();
   }
 
   void _initFirebase() async {
@@ -90,6 +98,13 @@ class NotificationService with WidgetsBindingObserver {
 
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         _handleNotificationTap(message.data);
+      });
+
+      // Handle terminated state
+      _fcm.getInitialMessage().then((RemoteMessage? message) {
+        if (message != null) {
+          _handleNotificationTap(message.data);
+        }
       });
     }
   }
@@ -170,11 +185,30 @@ class NotificationService with WidgetsBindingObserver {
 
   void _handleNotificationTap(Map<String, dynamic> data) {
     if (data['type'] == 'chat') {
-      // Future implementation for direct navigation
+      final roomId = data['chat_room_id'] ?? data['conversation_id'];
+      if (roomId != null) {
+        navigatorKey.currentState?.pushNamed(
+          Routes.chatRoute,
+          arguments: {
+            'conversationId': roomId,
+            'otherUser': {
+              'id': int.tryParse(data['sender_id']?.toString() ?? ''),
+              'username': data['sender_name'] ?? data['sender'] ?? "User",
+            },
+          },
+        );
+      }
     } else if (data['type'] == 'incoming_call') {
       _handleIncomingCall(data);
     } else if (data['type'] == 'game_invitation') {
-      _handleGameInvitation(data);
+      navigatorKey.currentState?.pushNamed(
+        Routes.gameInvitationRoute,
+        arguments: {
+          'invitationId': data['invitation_id'],
+          'senderId': int.tryParse(data['sender_id']?.toString() ?? ''),
+          'senderUsername': data['sender_name'] ?? data['sender_username'],
+        },
+      );
     }
   }
 
@@ -210,10 +244,13 @@ class NotificationService with WidgetsBindingObserver {
             _handleChatNotification(data['data']);
           } else if (data['type'] == 'game_invitation') {
             _handleGameInvitation(data['data']);
+            updateInvitationCount();
           } else if (data['type'] == 'invitation_accepted') {
             _handleInvitationAccepted(data['data']);
+            updateInvitationCount();
           } else if (data['type'] == 'invitation_declined') {
             _handleInvitationDeclined(data['data']);
+            updateInvitationCount();
           }
         },
         onDone: _reconnect,
@@ -401,6 +438,28 @@ class NotificationService with WidgetsBindingObserver {
     // In FriendSelectionPage, we handle the timer, but we should also handle this signal.
   }
 
+  Future<void> updateInvitationCount() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('accessToken');
+      if (token == null) return;
+
+      final result = await ApiService.getPendingInvitations(token);
+      if (result['success']) {
+        final List invitations = result['data'];
+        _currentInvitationCount = invitations.length;
+        _invitationCountController.add(_currentInvitationCount);
+      }
+    } catch (e) {
+      debugPrint("Error updating invitation count: $e");
+    }
+  }
+  
+  void clearInvitationCount() {
+    _currentInvitationCount = 0;
+    _invitationCountController.add(0);
+  }
+
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _wsSubscription?.cancel();
@@ -408,5 +467,6 @@ class NotificationService with WidgetsBindingObserver {
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
     _ringtonePlayer.dispose();
+    _invitationCountController.close();
   }
 }
