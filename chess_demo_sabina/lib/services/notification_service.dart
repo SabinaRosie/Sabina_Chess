@@ -209,6 +209,17 @@ class NotificationService with WidgetsBindingObserver {
           'senderUsername': data['sender_name'] ?? data['sender_username'],
         },
       );
+    } else if (data['type'] == 'game_invitation_accepted') {
+      // Direct navigation to live game board on FCM tap
+      navigatorKey.currentState?.pushReplacementNamed(
+        Routes.liveGameRoute,
+        arguments: {
+          'gameId': data['game_id'],
+          'opponentId': int.tryParse(data['opponent_id']?.toString() ?? ''),
+          'opponentUsername': data['opponent_name'] ?? "Opponent",
+          'color': 'white', // The sender (receiver of this FCM) plays white
+        },
+      );
     }
   }
 
@@ -245,7 +256,7 @@ class NotificationService with WidgetsBindingObserver {
           } else if (data['type'] == 'game_invitation') {
             _handleGameInvitation(data['data']);
             updateInvitationCount();
-          } else if (data['type'] == 'invitation_accepted') {
+          } else if (data['type'] == 'invitation:accepted') { // Updated from invitation_accepted
             _handleInvitationAccepted(data['data']);
             updateInvitationCount();
           } else if (data['type'] == 'invitation_declined') {

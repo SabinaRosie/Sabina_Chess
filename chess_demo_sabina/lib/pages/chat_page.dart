@@ -92,10 +92,13 @@ class _ChatPageState extends State<ChatPage> {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString('chat_cache_$_currentConversationId');
     if (cached != null) {
-      setState(() {
-        _messages = jsonDecode(cached);
-        _isHistoryLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _messages = jsonDecode(cached);
+          _isHistoryLoading = false; // Stop skeleton loader if cache exists
+        });
+        _scrollToBottom(immediate: true);
+      }
     }
   }
 
@@ -109,13 +112,18 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _loadHistory() async {
     if (_currentConversationId == null) {
-      setState(() => _isHistoryLoading = false);
+      if (mounted) setState(() => _isHistoryLoading = false);
       return;
     }
     
     // If we already have messages from cache, show a syncing indicator instead of a full blank loader
     if (_messages.isNotEmpty) {
-      setState(() => _isHistorySyncing = true);
+      if (mounted) setState(() {
+        _isHistoryLoading = false;
+        _isHistorySyncing = true;
+      });
+    } else {
+      if (mounted) setState(() => _isHistoryLoading = true);
     }
 
     final result = await _chatService.getMessages(_currentConversationId!);
