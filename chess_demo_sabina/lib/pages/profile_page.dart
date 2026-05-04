@@ -572,7 +572,7 @@ class _ProfilePageState extends State<ProfilePage>
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: AppColors.secondaryColor,
+            activeThumbColor: AppColors.secondaryColor,
             activeTrackColor: AppColors.secondaryColor.withOpacity(0.3),
             inactiveThumbColor: Colors.white38,
             inactiveTrackColor: Colors.white12,

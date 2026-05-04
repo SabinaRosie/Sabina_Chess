@@ -73,6 +73,23 @@ class ChatService {
     ));
   }
 
+  Future<Map<String, dynamic>> addReaction(int messageId, String emoji) async {
+    return _request((headers) => http.post(
+      Uri.parse('${AppConstants.baseUrl}/chat/messages/$messageId/reactions'),
+      headers: headers,
+      body: jsonEncode({'emoji': emoji}),
+    ));
+  }
+
+  Future<Map<String, dynamic>> removeReaction(int messageId, String emoji) async {
+    // Some backend frameworks have issues with DELETE bodies, so we use the pattern defined in the view
+    return _request((headers) => http.delete(
+      Uri.parse('${AppConstants.baseUrl}/chat/messages/$messageId/reactions'),
+      headers: headers,
+      body: jsonEncode({'emoji': emoji}),
+    ));
+  }
+
   // --- WebSocket Methods ---
 
   Future<void> connectToChat(String conversationId) async {

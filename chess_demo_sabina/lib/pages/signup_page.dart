@@ -166,8 +166,9 @@ class _SignupPageState extends State<SignupPage> {
                         style: const TextStyle(color: Colors.white),
                         onChanged: (value) => name = value,
                         validator: (value) {
-                          if (value == null || value.isEmpty)
+                          if (value == null || value.isEmpty) {
                             return "Enter name";
+                          }
                           if (!isValidName(value)) return "Invalid name";
                           return null;
                         },
@@ -183,8 +184,9 @@ class _SignupPageState extends State<SignupPage> {
                         style: const TextStyle(color: Colors.white),
                         onChanged: (value) => email = value.trim(),
                         validator: (value) {
-                          if (value == null || value.isEmpty)
+                          if (value == null || value.isEmpty) {
                             return "Enter email";
+                          }
                           if (!isValidEmail(value)) return "Enter valid email";
                           return null;
                         },
@@ -231,10 +233,12 @@ class _SignupPageState extends State<SignupPage> {
                         obscureText: !showConfirmPassword,
                         onChanged: (value) => confirmPassword = value,
                         validator: (value) {
-                          if (value == null || value.isEmpty)
+                          if (value == null || value.isEmpty) {
                             return "Confirm password";
-                          if (value != password)
+                          }
+                          if (value != password) {
                             return "Passwords do not match";
+                          }
                           return null;
                         },
                         decoration: _inputDecoration("Confirm password")

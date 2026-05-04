@@ -26,31 +26,52 @@ class CallPage extends StatefulWidget {
   State<CallPage> createState() => _CallPageState();
 }
 
-class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin {
+class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final CallManager _callManager = CallManager();
   final AudioPlayer _audioPlayer = AudioPlayer();
   late AnimationController _pulseController;
   
   static const String ringingUrl = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
   static const String beepUrl = 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3';
-
+ 
   StreamSubscription? _updateSubscription;
-
+ 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(duration: const Duration(milliseconds: 1500), vsync: this)..repeat(reverse: true);
     
     _updateSubscription = _callManager.onUpdate.listen((_) {
       if (mounted) setState(() {});
       if (_callManager.roomId == null) {
-        // Call ended remotely
-        Navigator.of(context).pop();
+        // Call ended remotely or locally
+        Navigator.pushReplacement(
+          context, 
+          MaterialPageRoute(
+            builder: (_) => CallEndedPage(
+              remoteUsername: widget.remoteUsername, 
+              duration: _formatDuration(_callManager.callDuration)
+            )
+          )
+        );
       }
     });
-
+ 
     if (!widget.fromMinimized) {
       _init();
+    }
+  }
+ 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    debugPrint("App Lifecycle State: ${state.name}");
+    
+    // When app goes to background, we don't want to disconnect.
+    // We just log it for now. If you have an Overlay active, it will stay.
+    if (state == AppLifecycleState.paused) {
+      debugPrint("Call continuing in background...");
     }
   }
 
@@ -87,6 +108,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _updateSubscription?.cancel();
     _pulseController.dispose();
     _audioPlayer.dispose();
@@ -191,6 +213,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _actionBtn(Icons.mic_off, _callManager.isMuted, _callManager.toggleMic),
+                  _actionBtn(Icons.volume_up, _callManager.isSpeakerOn, _callManager.toggleSpeaker),
                   FloatingActionButton(
                     onPressed: () {
                       _callManager.endCall();

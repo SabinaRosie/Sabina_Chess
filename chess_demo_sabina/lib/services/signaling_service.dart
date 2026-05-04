@@ -92,14 +92,17 @@ class SignalingService {
     } catch (e) {
       debugPrint("Error fetching ICE servers: $e");
     }
-    // Fallback to robust STUN servers if TURN fails
+    // Fallback to robust servers if TURN API fails
     return [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun2.l.google.com:19302'},
-      {'urls': 'stun:stun3.l.google.com:19302'},
-      {'urls': 'stun:stun4.l.google.com:19302'},
       {'urls': 'stun:stun.cloudflare.com:3478'},
+      {'urls': 'stun:stun.services.mozilla.com'},
+      {'urls': 'stun:stun.voiparound.com:3478'},
+      // These are common open relay ports
+      {'urls': 'stun:openrelay.metered.ca:80'},
+      {'urls': 'stun:openrelay.metered.ca:443'},
     ];
   }
 

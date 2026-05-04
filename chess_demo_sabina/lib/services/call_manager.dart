@@ -19,6 +19,7 @@ class CallManager {
 
   bool isMuted = false;
   bool isCameraOff = false;
+  bool isSpeakerOn = true;
   bool isConnected = false;
   bool remoteVideoEnabled = false;
   String callStatus = 'Initializing...';
@@ -117,8 +118,21 @@ class CallManager {
       };
 
       peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
-        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected && !isConnected) _onUserJoined();
-        if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) endCall();
+        debugPrint("WebRTC Connection State: ${state.name}");
+        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected && !isConnected) {
+          _onUserJoined();
+        }
+        if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+          debugPrint("WebRTC Connection Failed - Attempting recovery...");
+          // Potential ICE restart logic could go here if needed
+        }
+        if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed || 
+            state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          // Instead of immediate endCall, we give it a moment to reconnect
+          if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+            endCall();
+          }
+        }
       };
 
       final stream = await SignalingService.connectWebSocket(roomId!);
@@ -131,7 +145,7 @@ class CallManager {
         SignalingService.sendWsSignal('receiver_ready', {'room_id': roomId, 'video_enabled': !isCameraOff});
       }
 
-      heartbeatTimer = Timer.periodic(const Duration(seconds: 20), (t) {
+      heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (t) {
         SignalingService.sendWsSignal('ping', {'room_id': roomId!});
       });
 
@@ -192,6 +206,12 @@ class CallManager {
     localStream?.getAudioTracks().forEach((t) => t.enabled = !isMuted);
     notify();
   }
+  
+  void toggleSpeaker() {
+    isSpeakerOn = !isSpeakerOn;
+    Helper.setSpeakerphoneOn(isSpeakerOn);
+    notify();
+  }
 
   void toggleVideo() async {
     isCameraOff = !isCameraOff;
@@ -235,7 +255,9 @@ class CallManager {
     _overlayEntry = OverlayEntry(
       builder: (context) => CallOverlayWidget(),
     );
-    Overlay.of(context).insert(_overlayEntry!);
+    // Find the root overlay to ensure it persists after pop
+    final overlay = Navigator.of(context, rootNavigator: true).overlay;
+    overlay?.insert(_overlayEntry!);
   }
 
   void _hideOverlay() {

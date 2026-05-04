@@ -31,20 +31,24 @@ class NotificationService with WidgetsBindingObserver {
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
   void _configureAudio() {
-    AudioPlayer.global.setAudioContext(AudioContext(
-      android: const AudioContextAndroid(
-        isSpeakerphoneOn: true,
-        stayAwake: true,
-        contentType: AndroidContentType.sonification,
-        usageType: AndroidUsageType.alarm,
-        audioFocus: AndroidAudioFocus.gain,
-      ),
-      iOS: AudioContextIOS(
-        category: AVAudioSessionCategory.playback,
-        options: {AVAudioSessionOptions.defaultToSpeaker, AVAudioSessionOptions.allowBluetooth},
-      ),
-    ));
-    _ringtonePlayer.setVolume(1.0);
+    try {
+      AudioPlayer.global.setAudioContext(AudioContext(
+        android: const AudioContextAndroid(
+          isSpeakerphoneOn: true,
+          stayAwake: true,
+          contentType: AndroidContentType.sonification,
+          usageType: AndroidUsageType.alarm,
+          audioFocus: AndroidAudioFocus.gain,
+        ),
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+          options: {AVAudioSessionOptions.defaultToSpeaker, AVAudioSessionOptions.allowBluetooth},
+        ),
+      ));
+      _ringtonePlayer.setVolume(1.0);
+    } catch (e) {
+      debugPrint("Warning: Could not configure global audio context: $e");
+    }
   }
 
   @override
@@ -103,6 +107,23 @@ class NotificationService with WidgetsBindingObserver {
       iOS: iosSettings,
     );
     
+    // Create the high importance channel
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'high_importance_channel', // id
+      'High Importance Notifications', // title
+      description: 'This channel is used for important notifications.',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidImplementation != null) {
+      await androidImplementation.createNotificationChannel(channel);
+    }
+
     await _localNotifications.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse details) {
@@ -119,12 +140,14 @@ class NotificationService with WidgetsBindingObserver {
     final data = message.data;
 
     const androidPlatformChannelSpecifics = AndroidNotificationDetails(
-      'chat_messages', 'Chat Messages',
+      'high_importance_channel', 'High Importance Notifications',
       importance: Importance.max,
       priority: Priority.high,
       showWhen: true,
       color: AppColors.secondaryColor,
       enableLights: true,
+      fullScreenIntent: true, // Crucial for showing on top of lock screen
+      category: AndroidNotificationCategory.message,
       actions: <AndroidNotificationAction>[
         AndroidNotificationAction(
           'reply', 'Reply',

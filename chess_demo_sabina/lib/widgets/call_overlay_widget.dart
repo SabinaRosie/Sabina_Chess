@@ -4,6 +4,8 @@ import '../services/call_manager.dart';
 import '../utils/color_utils.dart';
 
 class CallOverlayWidget extends StatefulWidget {
+  const CallOverlayWidget({super.key});
+
   @override
   State<CallOverlayWidget> createState() => _CallOverlayWidgetState();
 }

@@ -8,6 +8,8 @@ import '../utils/color_utils.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
 import 'package:intl/intl.dart';
+import '../widgets/reaction_badge.dart';
+import '../widgets/reaction_picker.dart';
 
 class ChatPage extends StatefulWidget {
   final String? conversationId;
@@ -122,6 +124,14 @@ class _ChatPageState extends State<ChatPage> {
           }
         });
       }
+    } else if (data['type'] == 'reaction_updated') {
+      final updatedData = data['data'];
+      setState(() {
+        final index = _messages.indexWhere((m) => m['id'] == updatedData['messageId']);
+        if (index != -1) {
+          _messages[index]['reactions'] = updatedData['reactions'];
+        }
+      });
     }
   }
 
@@ -197,6 +207,102 @@ class _ChatPageState extends State<ChatPage> {
         else _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
     });
+  }
+
+  void _showReactionPicker(BuildContext context, dynamic msg, Offset position) {
+    final overlay = Overlay.of(context);
+    OverlayEntry? entry;
+
+    entry = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          GestureDetector(
+            onTap: () => entry?.remove(),
+            child: Container(color: Colors.transparent),
+          ),
+          Positioned(
+            left: position.dx.clamp(20.0, MediaQuery.of(context).size.width - 250.0),
+            top: position.dy - 70,
+            child: Material(
+              color: Colors.transparent,
+              child: ReactionPicker(
+                onEmojiSelected: (emoji) {
+                  _toggleReaction(msg['id'], emoji);
+                  entry?.remove();
+                },
+                onMorePressed: () {
+                  // TODO: Implement full emoji picker
+                  entry?.remove();
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    overlay.insert(entry);
+  }
+
+  Future<void> _toggleReaction(int messageId, String emoji) async {
+    // Find the message
+    final msgIndex = _messages.indexWhere((m) => m['id'] == messageId);
+    if (msgIndex == -1) return;
+
+    final msg = _messages[msgIndex];
+    final reactions = List<dynamic>.from(msg['reactions'] ?? []);
+    
+    // Check if user already reacted with this emoji
+    final emojiIndex = reactions.indexWhere((r) => r['emoji'] == emoji);
+    bool isRemoving = false;
+    
+    if (emojiIndex != -1) {
+      final userIds = List<dynamic>.from(reactions[emojiIndex]['userIds']);
+      if (userIds.contains(_currentUserId)) {
+        isRemoving = true;
+      }
+    }
+
+    // Optimistic Update
+    setState(() {
+      if (isRemoving) {
+        final userIds = List<dynamic>.from(reactions[emojiIndex]['userIds']);
+        userIds.remove(_currentUserId);
+        if (userIds.isEmpty) {
+          reactions.removeAt(emojiIndex);
+        } else {
+          reactions[emojiIndex]['userIds'] = userIds;
+          reactions[emojiIndex]['count'] = userIds.length;
+        }
+      } else {
+        if (emojiIndex != -1) {
+          final userIds = List<dynamic>.from(reactions[emojiIndex]['userIds']);
+          userIds.add(_currentUserId);
+          reactions[emojiIndex]['userIds'] = userIds;
+          reactions[emojiIndex]['count'] = userIds.length;
+        } else {
+          reactions.add({
+            'emoji': emoji,
+            'count': 1,
+            'userIds': [_currentUserId],
+          });
+        }
+      }
+      _messages[msgIndex]['reactions'] = reactions;
+    });
+
+    // API Call
+    final result = isRemoving 
+        ? await _chatService.removeReaction(messageId, emoji)
+        : await _chatService.addReaction(messageId, emoji);
+
+    if (!result['success']) {
+      // Revert optimistic update if failed
+      _loadHistory(); 
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to update reaction: ${result['error']}"))
+      );
+    }
   }
 
   @override
@@ -317,40 +423,66 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildMessageBubble(dynamic msg, bool isMe) {
+    final reactions = msg['reactions'] as List<dynamic>? ?? [];
+    
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8, left: 8, right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        decoration: BoxDecoration(
-          color: isMe ? AppColors.secondaryColor.withOpacity(0.9) : AppColors.surfaceColor,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(20),
-            topRight: const Radius.circular(20),
-            bottomLeft: Radius.circular(isMe ? 20 : 0),
-            bottomRight: Radius.circular(isMe ? 0 : 20),
-          ),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
-        ),
-        child: Column(
-          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(msg['content'], style: TextStyle(color: isMe ? AppColors.backgroundColor : AppColors.textPrimary, fontSize: 15)),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  DateFormat('HH:mm').format(DateTime.parse(msg['created_at']).toLocal()),
-                  style: TextStyle(color: (isMe ? AppColors.backgroundColor : AppColors.textSecondary).withOpacity(0.7), fontSize: 10),
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onLongPressStart: (details) => _showReactionPicker(context, msg, details.globalPosition),
+            onDoubleTapDown: (details) => _showReactionPicker(context, msg, details.globalPosition),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 4, left: 8, right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+              decoration: BoxDecoration(
+                color: isMe ? AppColors.secondaryColor.withOpacity(0.9) : AppColors.surfaceColor,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(20),
+                  topRight: const Radius.circular(20),
+                  bottomLeft: Radius.circular(isMe ? 20 : 0),
+                  bottomRight: Radius.circular(isMe ? 0 : 20),
                 ),
-                if (isMe) ...[const SizedBox(width: 4), _buildStatusIcon(msg['status'])],
-              ],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
+              ),
+              child: Column(
+                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(msg['content'], style: TextStyle(color: isMe ? AppColors.backgroundColor : AppColors.textPrimary, fontSize: 15)),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        DateFormat('HH:mm').format(DateTime.parse(msg['created_at']).toLocal()),
+                        style: TextStyle(color: (isMe ? AppColors.backgroundColor : AppColors.textSecondary).withOpacity(0.7), fontSize: 10),
+                      ),
+                      if (isMe) ...[const SizedBox(width: 4), _buildStatusIcon(msg['status'])],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+          if (reactions.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(left: isMe ? 0 : 12, right: isMe ? 12 : 0, bottom: 8),
+              child: Wrap(
+                children: reactions.map((r) {
+                  final bool hasReacted = (r['userIds'] as List<dynamic>).contains(_currentUserId);
+                  return ReactionBadge(
+                    emoji: r['emoji'],
+                    count: r['count'],
+                    isMe: hasReacted,
+                    onTap: () => _toggleReaction(msg['id'], r['emoji']),
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
       ),
     );
   }
