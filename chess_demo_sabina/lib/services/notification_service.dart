@@ -173,6 +173,8 @@ class NotificationService with WidgetsBindingObserver {
       // Future implementation for direct navigation
     } else if (data['type'] == 'incoming_call') {
       _handleIncomingCall(data);
+    } else if (data['type'] == 'game_invitation') {
+      _handleGameInvitation(data);
     }
   }
 
@@ -206,6 +208,12 @@ class NotificationService with WidgetsBindingObserver {
             _cancelIncomingCall();
           } else if (data['type'] == 'chat_notification') {
             _handleChatNotification(data['data']);
+          } else if (data['type'] == 'game_invitation') {
+            _handleGameInvitation(data['data']);
+          } else if (data['type'] == 'invitation_accepted') {
+            _handleInvitationAccepted(data['data']);
+          } else if (data['type'] == 'invitation_declined') {
+            _handleInvitationDeclined(data['data']);
           }
         },
         onDone: _reconnect,
@@ -350,6 +358,47 @@ class NotificationService with WidgetsBindingObserver {
         Navigator.of(context, rootNavigator: true).pop();
       }
     }
+  }
+
+  void _handleGameInvitation(Map<String, dynamic> data) {
+    navigatorKey.currentState?.pushNamed(
+      Routes.gameInvitationRoute,
+      arguments: {
+        'invitationId': data['invitation_id'],
+        'senderId': data['sender_id'],
+        'senderUsername': data['sender_username'],
+      },
+    );
+  }
+
+  void _handleInvitationAccepted(Map<String, dynamic> data) {
+    // When the sender's invitation is accepted, move them to the live game
+    navigatorKey.currentState?.pushReplacementNamed(
+      Routes.liveGameRoute,
+      arguments: {
+        'gameId': data['game_id'],
+        'opponentId': data['opponent_id'],
+        'opponentUsername': data['opponent_username'],
+        'color': 'white', // The sender plays white
+      },
+    );
+  }
+
+  void _handleInvitationDeclined(Map<String, dynamic> data) {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    // Pop any waiting dialog if it exists (via context)
+    // Actually, it's better to just show a snackbar or alert
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("${data['sender_username']} declined your invitation."),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
+    
+    // If we are in the waiting dialog, it might need to be popped.
+    // In FriendSelectionPage, we handle the timer, but we should also handle this signal.
   }
 
   void dispose() {

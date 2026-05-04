@@ -231,4 +231,73 @@ class ApiService {
     }
     return null;
   }
+
+  // ── Game API Methods ──
+
+  static Future<Map<String, dynamic>> getGameUsers(String accessToken) async {
+    final url = Uri.parse('${AppConstants.baseUrl}/game/users');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      );
+      return _handleResponse(response, 'Failed to fetch game users');
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> sendInvitation(String accessToken, int receiverId) async {
+    final url = Uri.parse('${AppConstants.baseUrl}/game/invite');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode({'receiver_id': receiverId}),
+      );
+      return _handleResponse(response, 'Failed to send invitation');
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> respondInvitation(String accessToken, dynamic invitationId, String status) async {
+    final url = Uri.parse('${AppConstants.baseUrl}/game/respond');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode({'invitation_id': invitationId, 'status': status}),
+      );
+      return _handleResponse(response, 'Failed to respond to invitation');
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> cancelInvitation(String accessToken, dynamic invitationId) async {
+    final url = Uri.parse('${AppConstants.baseUrl}/game/cancel');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode({'invitation_id': invitationId}),
+      );
+      return _handleResponse(response, 'Failed to cancel invitation');
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }

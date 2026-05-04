@@ -11,4 +11,7 @@ class Routes {
   static const String conversationsRoute = "/conversations";
   static const String chatRoute = "/chat";
   static const String publicProfileRoute = '/public_profile';
+  static const String friendSelectionRoute = "/friend-selection";
+  static const String liveGameRoute = "/live-game";
+  static const String gameInvitationRoute = "/game-invitation";
 }

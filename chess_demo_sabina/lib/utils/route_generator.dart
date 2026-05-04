@@ -11,6 +11,9 @@ import '../pages/conversations_page.dart';
 import '../pages/chat_page.dart';
 import '../pages/public_profile_page.dart';
 import '../screens/game_screen.dart';
+import '../pages/friend_selection_page.dart';
+import '../pages/live_game_page.dart';
+import '../pages/game_invitation_screen.dart';
 import 'route_const.dart';
 
 class RouteGenerator {
@@ -67,6 +70,30 @@ class RouteGenerator {
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(
           builder: (_) => PublicProfilePage(user: args['user']),
+        );
+
+      case Routes.friendSelectionRoute:
+        return MaterialPageRoute(builder: (_) => const FriendSelectionPage());
+
+      case Routes.liveGameRoute:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => LiveGamePage(
+            gameId: args['gameId'],
+            opponentId: args['opponentId'],
+            opponentUsername: args['opponentUsername'],
+            userColor: args['color'],
+          ),
+        );
+
+      case Routes.gameInvitationRoute:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => GameInvitationScreen(
+            invitationId: args['invitationId'],
+            senderId: args['senderId'],
+            senderUsername: args['senderUsername'],
+          ),
         );
 
       default:

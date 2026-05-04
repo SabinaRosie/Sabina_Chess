@@ -170,6 +170,34 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                       ),
                     ),
 
+                    const SizedBox(height: 16),
+                    // ── Play with Friends Button ──
+                    SizedBox(
+                      width: double.infinity,
+                      height: 58,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          RouteGenerator.navigateToPage(context, Routes.friendSelectionRoute);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.secondaryColor, width: 2),
+                          foregroundColor: AppColors.secondaryColor,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.people_alt_rounded, size: 24),
+                            SizedBox(width: 10),
+                            Text(
+                              'Play with Friends',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
                     const SizedBox(height: 24),
                     // ── Stats Row ──
                     Row(
