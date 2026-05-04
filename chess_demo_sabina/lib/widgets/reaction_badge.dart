@@ -20,16 +20,16 @@ class ReactionBadge extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(right: 4, top: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        margin: const EdgeInsets.only(right: 2, top: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
           color: isMe 
-              ? AppColors.secondaryColor.withOpacity(0.2) 
-              : Colors.white.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
+              ? AppColors.secondaryColor.withOpacity(0.3) 
+              : Colors.black.withOpacity(0.5), // Darker background for visibility on glass
+          borderRadius: BorderRadius.circular(15),
           border: Border.all(
             color: isMe ? AppColors.secondaryColor : Colors.white24,
-            width: 1,
+            width: 0.5,
           ),
         ),
         child: Row(

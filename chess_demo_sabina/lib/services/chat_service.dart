@@ -90,6 +90,24 @@ class ChatService {
     ));
   }
 
+  Future<Map<String, dynamic>> deleteMessage(int messageId) async {
+    return _request((headers) => http.delete(
+      Uri.parse('${AppConstants.baseUrl}/chat/messages/$messageId/delete'),
+      headers: headers,
+    ));
+  }
+
+  Future<Map<String, dynamic>> forwardMessage(int messageId, String conversationId) async {
+    return _request((headers) => http.post(
+      Uri.parse('${AppConstants.baseUrl}/chat/forward'),
+      headers: headers,
+      body: jsonEncode({
+        'message_id': messageId,
+        'conversation_id': conversationId,
+      }),
+    ));
+  }
+
   // --- WebSocket Methods ---
 
   Future<void> connectToChat(String conversationId) async {
@@ -174,11 +192,12 @@ class ChatService {
     });
   }
 
-  Future<void> sendMessage(String content, {String type = 'text'}) async {
+  Future<void> sendMessage(String content, {String type = 'text', int? repliedToId}) async {
     final msg = {
       'type': 'message',
       'content': content,
       'message_type': type,
+      'replied_to_id': repliedToId,
     };
 
     if (!_isConnected || _chatChannel == null) {
