@@ -210,16 +210,30 @@ class NotificationService with WidgetsBindingObserver {
         },
       );
     } else if (data['type'] == 'game_invitation_accepted') {
-      // Direct navigation to live game board on FCM tap
-      navigatorKey.currentState?.pushReplacementNamed(
-        Routes.liveGameRoute,
-        arguments: {
-          'gameId': data['game_id'],
-          'opponentId': int.tryParse(data['opponent_id']?.toString() ?? ''),
-          'opponentUsername': data['opponent_name'] ?? "Opponent",
-          'color': 'white', // The sender (receiver of this FCM) plays white
-        },
-      );
+      final color = data['color'];
+      if (color == 'white') {
+        // Sender (White) sees the Play Now or Ignore screen
+        navigatorKey.currentState?.pushNamed(
+          Routes.challengeAcceptedRoute,
+          arguments: {
+            'gameId': data['game_id'],
+            'opponentId': int.tryParse(data['opponent_id']?.toString() ?? ''),
+            'opponentUsername': data['opponent_name'] ?? "Opponent",
+            'opponentPhotoUrl': data['opponent_photo'],
+          },
+        );
+      } else {
+        // Receiver (Black) goes directly to the live game
+        navigatorKey.currentState?.pushReplacementNamed(
+          Routes.liveGameRoute,
+          arguments: {
+            'gameId': data['game_id'],
+            'opponentId': int.tryParse(data['opponent_id']?.toString() ?? ''),
+            'opponentUsername': data['opponent_name'] ?? "Opponent",
+            'color': 'black',
+          },
+        );
+      }
     }
   }
 
@@ -420,16 +434,20 @@ class NotificationService with WidgetsBindingObserver {
   }
 
   void _handleInvitationAccepted(Map<String, dynamic> data) {
-    // When the sender's invitation is accepted, move them to the live game
-    navigatorKey.currentState?.pushReplacementNamed(
-      Routes.liveGameRoute,
-      arguments: {
-        'gameId': data['game_id'],
-        'opponentId': data['opponent_id'],
-        'opponentUsername': data['opponent_username'],
-        'color': 'white', // The sender plays white
-      },
-    );
+    // When the sender's invitation is accepted, move them to the challenge accepted screen
+    // The receiver handles their own navigation in GameInvitationScreen
+    final color = data['color'];
+    if (color == 'white') {
+      navigatorKey.currentState?.pushNamed(
+        Routes.challengeAcceptedRoute,
+        arguments: {
+          'gameId': data['game_id'],
+          'opponentId': data['opponent_id'],
+          'opponentUsername': data['opponent_username'],
+          'opponentPhotoUrl': data['opponent_photo'],
+        },
+      );
+    }
   }
 
   void _handleInvitationDeclined(Map<String, dynamic> data) {

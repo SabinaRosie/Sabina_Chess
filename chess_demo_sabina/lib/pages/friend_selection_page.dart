@@ -362,17 +362,89 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
           isOnline ? "Online" : "Offline",
           style: TextStyle(color: isOnline ? Colors.green.withOpacity(0.8) : Colors.white38, fontSize: 13),
         ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.secondaryColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.secondaryColor.withOpacity(0.2)),
+        trailing: ChessInviteButton(
+          onInvite: () => _sendInvite(user),
+          isAlreadyPending: false, // For now, we only handle the immediate feedback
+        ),
+      ),
+    );
+  }
+}
+
+class ChessInviteButton extends StatefulWidget {
+  final VoidCallback onInvite;
+  final bool isAlreadyPending;
+
+  const ChessInviteButton({
+    super.key,
+    required this.onInvite,
+    this.isAlreadyPending = false,
+  });
+
+  @override
+  State<ChessInviteButton> createState() => _ChessInviteButtonState();
+}
+
+class _ChessInviteButtonState extends State<ChessInviteButton> {
+  bool _isSuccess = false;
+  bool _isPending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isPending = widget.isAlreadyPending;
+  }
+
+  void _handleInvite() {
+    if (_isPending || _isSuccess) return;
+
+    widget.onInvite();
+
+    setState(() {
+      _isSuccess = true;
+    });
+
+    // Show tick for exactly 1 second
+    Timer(const Duration(seconds: 1), () {
+      if (mounted) {
+        setState(() {
+          _isSuccess = false;
+          _isPending = true;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _handleInvite,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: _isSuccess 
+              ? Colors.green.withOpacity(0.2) 
+              : (_isPending ? Colors.white.withOpacity(0.05) : AppColors.secondaryColor.withOpacity(0.1)),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _isSuccess 
+                ? Colors.green.withOpacity(0.5) 
+                : (_isPending ? Colors.white24 : AppColors.secondaryColor.withOpacity(0.2)),
           ),
-          child: const Text(
-            "Invite",
-            style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold),
-          ),
+        ),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: _isSuccess
+              ? const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 18, key: ValueKey('tick'))
+              : Text(
+                  _isPending ? "Pending" : "Invite",
+                  key: ValueKey(_isPending ? 'pending' : 'invite'),
+                  style: TextStyle(
+                    color: _isPending ? Colors.white38 : AppColors.secondaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
         ),
       ),
     );

@@ -36,7 +36,7 @@ class _GameInvitationScreenState extends State<GameInvitationScreen> {
           if (status == 'accepted') {
             // Navigation to game is handled by the result here OR by the global WS listener
             // The API returns game_id on success
-            RouteGenerator.navigateToPage(
+            Navigator.pushReplacementNamed(
               context, 
               Routes.liveGameRoute,
               arguments: {

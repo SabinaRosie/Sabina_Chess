@@ -14,4 +14,5 @@ class Routes {
   static const String friendSelectionRoute = "/friend-selection";
   static const String liveGameRoute = "/live-game";
   static const String gameInvitationRoute = "/game-invitation";
+  static const String challengeAcceptedRoute = "/challenge-accepted";
 }
