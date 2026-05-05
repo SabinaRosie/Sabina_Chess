@@ -135,9 +135,7 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
     final result = await ApiService.sendInvitation(_accessToken!, user['id']);
     if (mounted) {
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Invitation sent!")),
-        );
+        _showSuccessPopup();
         _fetchSentInvitations();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -145,6 +143,41 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
         );
       }
     }
+  }
+
+  void _showSuccessPopup() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        Timer(const Duration(seconds: 1), () {
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
+        });
+        return Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.8),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.secondaryColor.withOpacity(0.5)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle_outline_rounded, color: Colors.greenAccent, size: 48),
+                const SizedBox(height: 12),
+                const Text(
+                  "Invitation Sent!",
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showWaitingDialog(dynamic user, dynamic invitationId) {
