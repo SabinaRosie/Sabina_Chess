@@ -89,20 +89,58 @@ class _LiveGamePageState extends State<LiveGamePage> {
         
       case 'opponent_disconnected':
         setState(() => isOpponentDisconnected = true);
+        _showOpponentLeftPopup();
         break;
         
       case 'opponent_reconnected':
         setState(() => isOpponentDisconnected = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Opponent reconnected!"), backgroundColor: Colors.green),
+        );
         break;
         
       case 'game_over':
         _showGameOverDialog(data['reason']);
         break;
         
+      case 'game_sync':
+        final syncData = data['data'];
+        setState(() {
+          board.loadFEN(syncData['fen']);
+          isOpponentDisconnected = !(syncData['is_opponent_online'] ?? true);
+          _updateCheckStatus();
+        });
+        break;
+
       case 'draw_offered':
         _showDrawOfferDialog();
         break;
     }
+  }
+
+  void _showOpponentLeftPopup() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Opponent Left", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+        content: Text("${widget.opponentUsername} has left the game session. Waiting for them to return..."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK", style: TextStyle(color: AppColors.secondaryColor)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.popUntil(context, (route) => route.isFirst);
+            },
+            child: const Text("Quit to Home", style: TextStyle(color: Colors.white54)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _updateCheckStatus() {
@@ -156,6 +194,8 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
   void _resign() {
     _channel?.sink.add(jsonEncode({'action': 'resign'}));
+    // Navigation will be handled by the game_over signal or manually if needed
+    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   void _offerDraw() {
@@ -216,79 +256,111 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: const Text("Live Chess", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
-        backgroundColor: AppColors.surfaceColor,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.flag_rounded, color: Colors.redAccent),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  backgroundColor: AppColors.surfaceColor,
-                  title: const Text("Resign?", style: TextStyle(color: Colors.white)),
-                  content: const Text("Are you sure you want to resign this game?"),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                    TextButton(onPressed: () {
-                      Navigator.pop(context);
-                      _resign();
-                    }, child: const Text("Resign", style: TextStyle(color: Colors.redAccent))),
-                  ],
-                ),
-              );
-            },
-            tooltip: "Resign",
-          ),
-          IconButton(
-            icon: const Icon(Icons.handshake_rounded, color: Colors.amber),
-            onPressed: _offerDraw,
-            tooltip: "Offer Draw",
-          ),
-        ],
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: AppColors.woodGradient,
-          ),
-        ),
-        child: Column(
-          children: [
-            // ── Opponent Info ──
-            _buildPlayerHeader(widget.opponentUsername, widget.userColor != 'white'),
-            
-            if (isOpponentDisconnected)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(8),
-                color: Colors.redAccent.withOpacity(0.8),
-                child: const Text(
-                  "Opponent disconnected. Waiting...",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ),
-
-            const Spacer(),
-            
-            // ── The Board ──
-            _buildBoard(),
-
-            const Spacer(),
-            
-            // ── User Info ──
-            _buildPlayerHeader("You", widget.userColor == 'white'),
-            
-            const SizedBox(height: 20),
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        final bool shouldQuit = await _showQuitConfirmation() ?? false;
+        if (shouldQuit && context.mounted) {
+          Navigator.popUntil(context, (route) => route.isFirst);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text("Live Chess", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+          backgroundColor: AppColors.surfaceColor,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.flag_rounded, color: Colors.redAccent),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    backgroundColor: AppColors.surfaceColor,
+                    title: const Text("Resign?", style: TextStyle(color: Colors.white)),
+                    content: const Text("Are you sure you want to resign this game?"),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                      TextButton(onPressed: () {
+                        Navigator.pop(context);
+                        _resign();
+                      }, child: const Text("Resign", style: TextStyle(color: Colors.redAccent))),
+                    ],
+                  ),
+                );
+              },
+              tooltip: "Resign",
+            ),
+            IconButton(
+              icon: const Icon(Icons.handshake_rounded, color: Colors.amber),
+              onPressed: _offerDraw,
+              tooltip: "Offer Draw",
+            ),
           ],
         ),
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: AppColors.woodGradient,
+            ),
+          ),
+          child: Column(
+            children: [
+              // ── Opponent Info ──
+              _buildPlayerHeader(widget.opponentUsername, widget.userColor != 'white'),
+              
+              if (isOpponentDisconnected)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  color: Colors.redAccent.withOpacity(0.8),
+                  child: const Text(
+                    "Opponent disconnected. Waiting...",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+  
+              const Spacer(),
+              
+              // ── The Board ──
+              _buildBoard(),
+  
+              const Spacer(),
+              
+              // ── User Info ──
+              _buildPlayerHeader("You", widget.userColor == 'white'),
+              
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool?> _showQuitConfirmation() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Quit Game?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text("Are you sure you want to leave the game? This will count as a forfeit if you don't return quickly."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Stay", style: TextStyle(color: AppColors.secondaryColor)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Quit", style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
       ),
     );
   }

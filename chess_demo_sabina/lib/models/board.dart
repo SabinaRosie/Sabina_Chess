@@ -303,4 +303,51 @@ class Board {
 
     isWhiteTurn = !isWhiteTurn;
   }
+
+  void loadFEN(String fen) {
+    List<String> parts = fen.split(' ');
+    String positions = parts[0];
+    
+    // Reset board
+    board = List.generate(8, (_) => List.filled(8, null));
+    
+    List<String> rows = positions.split('/');
+    for (int r = 0; r < 8; r++) {
+      int c = 0;
+      for (int i = 0; i < rows[r].length; i++) {
+        String char = rows[r][i];
+        if (RegExp(r'[0-9]').hasMatch(char)) {
+          c += int.parse(char);
+        } else {
+          bool isWhite = char == char.toUpperCase();
+          PieceType? type;
+          String typeStr = char.toLowerCase();
+          
+          switch (typeStr) {
+            case 'p': type = PieceType.pawn; break;
+            case 'r': type = PieceType.rook; break;
+            case 'n': type = PieceType.knight; break;
+            case 'b': type = PieceType.bishop; break;
+            case 'q': type = PieceType.queen; break;
+            case 'k': type = PieceType.king; break;
+          }
+          
+          if (type != null) {
+            String colorStr = isWhite ? 'white' : 'black';
+            String nameStr = typeStr == 'p' ? 'pawn' : typeStr == 'r' ? 'rook' : typeStr == 'n' ? 'knight' : typeStr == 'b' ? 'bishop' : typeStr == 'q' ? 'queen' : 'king';
+            board[r][c] = Piece(
+              type: type,
+              isWhite: isWhite,
+              image: 'assets/images/${colorStr}_$nameStr.png',
+            );
+          }
+          c++;
+        }
+      }
+    }
+    
+    if (parts.length > 1) {
+      isWhiteTurn = parts[1] == 'w';
+    }
+  }
 }
