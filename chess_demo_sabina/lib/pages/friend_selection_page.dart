@@ -17,6 +17,7 @@ class FriendSelectionPage extends StatefulWidget {
 class _FriendSelectionPageState extends State<FriendSelectionPage> {
   List<dynamic> users = [];
   List<dynamic> pendingInvitations = [];
+  List<dynamic> sentInvitations = [];
   bool isLoading = true;
   String? error;
   String? _accessToken;
@@ -28,6 +29,7 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
     _fetchData();
     _invitationSub = NotificationService().invitationCountStream.listen((_) {
       _fetchPendingInvitations();
+      _fetchSentInvitations();
     });
   }
 
@@ -40,6 +42,7 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
   Future<void> _fetchData() async {
     await _fetchUsers();
     await _fetchPendingInvitations();
+    await _fetchSentInvitations();
   }
 
   Future<void> _fetchUsers() async {
@@ -77,6 +80,16 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
     if (mounted && result['success']) {
       setState(() {
         pendingInvitations = result['data'];
+      });
+    }
+  }
+
+  Future<void> _fetchSentInvitations() async {
+    if (_accessToken == null) return;
+    final result = await ApiService.getSentInvitations(_accessToken!);
+    if (mounted && result['success']) {
+      setState(() {
+        sentInvitations = result['data'];
       });
     }
   }
@@ -122,7 +135,10 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
     final result = await ApiService.sendInvitation(_accessToken!, user['id']);
     if (mounted) {
       if (result['success']) {
-        _showWaitingDialog(user, result['data']['invitation_id']);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Invitation sent!")),
+        );
+        _fetchSentInvitations();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(result['error'] ?? "Failed to send invitation")),
@@ -177,7 +193,7 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -194,8 +210,9 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
             unselectedLabelColor: Colors.white38,
             labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             tabs: [
-              Tab(text: "Select User", icon: Icon(Icons.person_search_rounded)),
-              Tab(text: "Pending", icon: Icon(Icons.hourglass_empty_rounded)),
+              Tab(text: "Users", icon: Icon(Icons.person_search_rounded)),
+              Tab(text: "Pending", icon: Icon(Icons.inbox_rounded)),
+              Tab(text: "Sent", icon: Icon(Icons.send_rounded)),
             ],
           ),
         ),
@@ -215,6 +232,7 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
                       children: [
                         _buildUserList(),
                         _buildPendingList(),
+                        _buildSentList(),
                       ],
                     ),
         ),
@@ -242,67 +260,199 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.inbox_rounded, color: Colors.white24, size: 64),
+            Icon(Icons.inbox_rounded, color: Colors.white12, size: 80),
             SizedBox(height: 16),
-            Text("No pending invitations.", style: TextStyle(color: Colors.white38, fontSize: 16)),
+            Text(
+              "No pending invitations.",
+              style: TextStyle(color: Colors.white38, fontSize: 16, fontWeight: FontWeight.w500),
+            ),
           ],
         ),
       );
     }
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       itemCount: pendingInvitations.length,
       itemBuilder: (context, index) => _buildPendingInvitationCard(pendingInvitations[index]),
     );
   }
 
+  Widget _buildSentList() {
+    if (sentInvitations.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.send_rounded, color: Colors.white12, size: 80),
+            SizedBox(height: 16),
+            Text(
+              "No sent invitations.",
+              style: TextStyle(color: Colors.white38, fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      itemCount: sentInvitations.length,
+      itemBuilder: (context, index) => _buildSentInvitationCard(sentInvitations[index]),
+    );
+  }
+
   Widget _buildPendingInvitationCard(dynamic inv) {
     final sender = inv['sender'];
+    final timeStr = _formatTime(inv['created_at']);
+    final photoUrl = sender['photo_url'];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: AppColors.secondaryColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.secondaryColor.withOpacity(0.15)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        leading: _buildProfilePhoto(sender['username'], photoUrl),
+        title: Text(
+          sender['username'],
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            "Received $timeStr",
+            style: const TextStyle(color: Colors.white38, fontSize: 12),
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildActionButton(
+              icon: Icons.check_rounded,
+              color: Colors.greenAccent,
+              onPressed: () => _handleResponse(inv['id'], 'accepted', sender),
+            ),
+            const SizedBox(width: 8),
+            _buildActionButton(
+              icon: Icons.close_rounded,
+              color: Colors.redAccent,
+              onPressed: () => _handleResponse(inv['id'], 'declined', sender),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton({required IconData icon, required Color color, required VoidCallback onPressed}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: color, size: 20),
+        onPressed: onPressed,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildSentInvitationCard(dynamic inv) {
+    final receiver = inv['receiver'];
+    final timeStr = _formatTime(inv['created_at']);
+    final photoUrl = receiver['photo_url'];
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppColors.secondaryColor.withOpacity(0.15),
+        color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.secondaryColor.withOpacity(0.3)),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
       ),
       child: ListTile(
-        onTap: () {
-          Navigator.pushNamed(
-            context,
-            Routes.gameInvitationRoute,
-            arguments: {
-              'invitationId': inv['id'],
-              'senderId': sender['id'],
-              'senderUsername': sender['username'],
-            },
-          );
-        },
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.secondaryColor.withOpacity(0.5), width: 1.5),
-          ),
-          child: Center(
-            child: Text(
-              sender['username'][0].toUpperCase(),
-              style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-          ),
-        ),
+        leading: _buildProfilePhoto(receiver['username'], photoUrl),
         title: Text(
-          sender['username'],
+          receiver['username'],
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         subtitle: Text(
-          "Sent ${DateTime.now().difference(DateTime.parse(inv['created_at'].toString())).inMinutes}m ago",
+          "Sent $timeStr",
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.secondaryColor, size: 16),
+        trailing: TextButton(
+          onPressed: () async {
+            final res = await ApiService.cancelInvitation(_accessToken!, inv['id']);
+            if (res['success']) _fetchSentInvitations();
+          },
+          child: const Text("Cancel", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+        ),
       ),
     );
+  }
+
+  Widget _buildProfilePhoto(String username, String? photoUrl) {
+    return Container(
+      width: 50,
+      height: 50,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.secondaryColor.withOpacity(0.4), width: 1.5),
+      ),
+      child: ClipOval(
+        child: photoUrl != null
+            ? Image.network(photoUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildInitial(username))
+            : _buildInitial(username),
+      ),
+    );
+  }
+
+  Widget _buildInitial(String username) {
+    return Center(
+      child: Text(
+        username[0].toUpperCase(),
+        style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+      ),
+    );
+  }
+
+  String _formatTime(String createdAt) {
+    final diff = DateTime.now().difference(DateTime.parse(createdAt));
+    if (diff.inMinutes < 60) return "${diff.inMinutes}m ago";
+    if (diff.inHours < 24) return "${diff.inHours}h ago";
+    return "${diff.inDays}d ago";
+  }
+
+  Future<void> _handleResponse(dynamic invId, String status, dynamic sender) async {
+    final result = await ApiService.respondInvitation(_accessToken!, invId, status);
+    if (mounted && result['success']) {
+      if (status == 'accepted') {
+        Navigator.pushReplacementNamed(
+          context,
+          Routes.liveGameRoute,
+          arguments: {
+            'gameId': result['data']['game_id'],
+            'opponentId': sender['id'],
+            'opponentUsername': sender['username'],
+            'color': 'black',
+          },
+        );
+      } else {
+        _fetchPendingInvitations();
+      }
+    }
   }
 
   Widget _buildUserCard(dynamic user) {

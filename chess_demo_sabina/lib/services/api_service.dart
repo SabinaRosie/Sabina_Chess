@@ -316,4 +316,20 @@ class ApiService {
       return {'success': false, 'error': e.toString()};
     }
   }
+
+  static Future<Map<String, dynamic>> getSentInvitations(String accessToken) async {
+    final url = Uri.parse('${AppConstants.baseUrl}/game/invitations/sent');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      );
+      return _handleResponse(response, 'Failed to fetch sent invitations');
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }
