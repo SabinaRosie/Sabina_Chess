@@ -19,6 +19,7 @@ import 'route_const.dart';
 
 class RouteGenerator {
   static Route<dynamic> generateRoute(RouteSettings settings) {
+    debugPrint("ROUTE_GEN: Navigating to ${settings.name} with args: ${settings.arguments}");
     switch (settings.name) {
       case Routes.splashRoute:
         return MaterialPageRoute(builder: (_) => const SplashScreen());

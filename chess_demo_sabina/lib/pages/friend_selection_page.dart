@@ -472,11 +472,13 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
     final result = await ApiService.respondInvitation(_accessToken!, invId, status);
     if (mounted && result['success']) {
       if (status == 'accepted') {
-        Navigator.pushReplacementNamed(
-          context,
+        final gameId = result['data']['game_id']?.toString();
+        debugPrint("CHESS_NAV: Invitation accepted in FriendSelection. Navigating to LiveGamePage $gameId");
+        
+        Navigator.of(context).pushNamed(
           Routes.liveGameRoute,
           arguments: {
-            'gameId': result['data']['game_id'],
+            'gameId': gameId,
             'opponentId': sender['id'],
             'opponentUsername': sender['username'],
             'color': 'black',

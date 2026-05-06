@@ -106,27 +106,40 @@ class ChallengeAcceptedPage extends StatelessWidget {
                       height: 60,
                       child: ElevatedButton(
                         onPressed: () {
-                          Navigator.pushReplacementNamed(
-                            context,
+                          debugPrint("CHESS_FLOW: Sender tapping 'Play Now'. gameId: $gameId");
+                          
+                          if (gameId.isEmpty) {
+                            debugPrint("CHESS_ERROR: gameId is null or empty!");
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Error: Invalid game session.")),
+                            );
+                            return;
+                          }
+
+                          Navigator.of(context).pushNamedAndRemoveUntil(
                             Routes.liveGameRoute,
+                            (route) => route.isFirst,
                             arguments: {
                               'gameId': gameId,
                               'opponentId': opponentId,
                               'opponentUsername': opponentUsername,
-                              'color': 'white', // Original sender is always white
+                              'color': 'white',
                             },
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryColor,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                          elevation: 8,
-                          shadowColor: AppColors.primaryColor.withOpacity(0.5),
+                          backgroundColor: Colors.brown.shade800,
+                          foregroundColor: AppColors.secondaryColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            side: const BorderSide(color: AppColors.secondaryColor, width: 1),
+                          ),
+                          elevation: 12,
+                          shadowColor: Colors.black.withOpacity(0.5),
                         ),
                         child: const Text(
                           "PLAY NOW",
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1),
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2),
                         ),
                       ),
                     ),

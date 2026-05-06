@@ -7,6 +7,8 @@ import '../models/piece.dart';
 import '../utils/color_utils.dart';
 import '../utils/const.dart';
 import '../widgets/square.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/notification_service.dart';
 
 class LiveGamePage extends StatefulWidget {
   final String gameId;
@@ -30,27 +32,56 @@ class _LiveGamePageState extends State<LiveGamePage> {
   late Board board;
   WebSocketChannel? _channel;
   bool isConnected = false;
+  bool isSyncing = true;
   bool isOpponentDisconnected = false;
+  Timer? _heartbeatTimer;
   int? selectedRow;
   int? selectedCol;
   List<List<int>> validMoves = [];
   bool isWhiteInCheck = false;
   bool isBlackInCheck = false;
+  bool showGameStartOverlay = false;
+  Timer? _opponentGraceTimer;
+  bool _isGracePeriodActive = false;
 
   @override
   void initState() {
     super.initState();
+    NotificationService().currentGameId = widget.gameId;
     board = Board();
     _connectWebSocket();
   }
 
-  void _connectWebSocket() {
-    final url = Uri.parse('${AppConstants.webSocketUrl}/game/${widget.gameId}/');
+  void _connectWebSocket() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    
+    if (token == null) {
+      debugPrint("CHESS_ERROR: No access token found for WebSocket");
+      return;
+    }
+
+    final url = Uri.parse('${AppConstants.webSocketUrl}/game/${widget.gameId}/?token=$token');
     _channel = WebSocketChannel.connect(url);
+    
+    // 🔹 Add a timeout for synchronization (increased to 60s)
+    Timer(const Duration(seconds: 60), () {
+      if (mounted && isSyncing) {
+        debugPrint("CHESS_ERROR: Sync timed out for game ${widget.gameId}");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Connection timed out. Please try again.")),
+        );
+        setState(() {
+          isSyncing = false;
+          isConnected = false;
+        });
+      }
+    });
     
     _channel!.stream.listen(
       (message) {
         final data = jsonDecode(message);
+        if (data['type'] == 'pong') return;
         _handleIncomingMessage(data);
       },
       onDone: () {
@@ -59,15 +90,28 @@ class _LiveGamePageState extends State<LiveGamePage> {
             isConnected = false;
             isOpponentDisconnected = true;
           });
-          // Try to reconnect? For now, just show disconnected
         }
       },
       onError: (error) {
         debugPrint("WebSocket Error: $error");
+        if (mounted) {
+          setState(() {
+            isConnected = false;
+          });
+        }
       },
     );
     
-    setState(() => isConnected = true);
+    _startHeartbeat();
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (isConnected) {
+        _channel?.sink.add(jsonEncode({'action': 'ping'}));
+      }
+    });
   }
 
   void _handleIncomingMessage(Map<String, dynamic> data) {
@@ -92,8 +136,12 @@ class _LiveGamePageState extends State<LiveGamePage> {
         _showOpponentLeftPopup();
         break;
         
-      case 'opponent_reconnected':
-        setState(() => isOpponentDisconnected = false);
+      case 'player_reconnected':
+        _opponentGraceTimer?.cancel();
+        setState(() {
+          isOpponentDisconnected = false;
+          _isGracePeriodActive = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Opponent reconnected!"), backgroundColor: Colors.green),
         );
@@ -105,15 +153,58 @@ class _LiveGamePageState extends State<LiveGamePage> {
         
       case 'game_sync':
         final syncData = data['data'];
+        final bool opponentOnline = syncData['is_opponent_online'] ?? true;
+        
         setState(() {
           board.loadFEN(syncData['fen']);
-          isOpponentDisconnected = !(syncData['is_opponent_online'] ?? true);
+          isSyncing = false;
+          isConnected = true;
           _updateCheckStatus();
+          
+          if (!opponentOnline) {
+            // Start 30s grace period instead of showing banner immediately
+            _isGracePeriodActive = true;
+            _opponentGraceTimer?.cancel();
+            _opponentGraceTimer = Timer(const Duration(seconds: 30), () {
+              if (mounted) {
+                setState(() {
+                  isOpponentDisconnected = true;
+                  _isGracePeriodActive = false;
+                });
+              }
+            });
+          } else {
+            isOpponentDisconnected = false;
+            _isGracePeriodActive = false;
+            _opponentGraceTimer?.cancel();
+          }
         });
+
+        if (opponentOnline && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Match Ready! Both players connected."),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
         break;
 
       case 'draw_offered':
         _showDrawOfferDialog();
+        break;
+
+      case 'game_start':
+        _opponentGraceTimer?.cancel();
+        setState(() {
+          showGameStartOverlay = true;
+          isOpponentDisconnected = false;
+          _isGracePeriodActive = false;
+        });
+        Timer(const Duration(seconds: 2), () {
+          if (mounted) setState(() => showGameStartOverlay = false);
+        });
         break;
     }
   }
@@ -250,6 +341,11 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
   @override
   void dispose() {
+    if (NotificationService().currentGameId == widget.gameId) {
+      NotificationService().currentGameId = null;
+    }
+    _opponentGraceTimer?.cancel();
+    _heartbeatTimer?.cancel();
     _channel?.sink.close();
     super.dispose();
   }
@@ -308,34 +404,75 @@ class _LiveGamePageState extends State<LiveGamePage> {
               colors: AppColors.woodGradient,
             ),
           ),
-          child: Column(
+          child: Stack(
             children: [
-              // ── Opponent Info ──
-              _buildPlayerHeader(widget.opponentUsername, widget.userColor != 'white'),
-              
-              if (isOpponentDisconnected)
+              if (isSyncing)
+                const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: AppColors.secondaryColor),
+                      SizedBox(height: 20),
+                      Text("Synchronizing board...", style: TextStyle(color: Colors.white70)),
+                    ],
+                  ),
+                )
+              else
+                Column(
+                  children: [
+                    // ── Opponent Info ──
+                    _buildPlayerHeader(widget.opponentUsername, widget.userColor != 'white'),
+                    
+                    if (isOpponentDisconnected && !_isGracePeriodActive)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        color: Colors.redAccent.withOpacity(0.8),
+                        child: const Text(
+                          "Opponent disconnected. Waiting...",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+        
+                    const Spacer(),
+                    
+                    // ── The Board ──
+                    _buildBoard(),
+        
+                    const Spacer(),
+                    
+                    // ── User Info ──
+                    _buildPlayerHeader("You", widget.userColor == 'white'),
+                    
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              if (showGameStartOverlay)
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  color: Colors.redAccent.withOpacity(0.8),
-                  child: const Text(
-                    "Opponent disconnected. Waiting...",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  color: Colors.black54,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          "GAME START",
+                          style: TextStyle(
+                            color: AppColors.secondaryColor,
+                            fontSize: 48,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 4,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          "${widget.userColor.toUpperCase()} vs ${widget.opponentUsername.toUpperCase()}",
+                          style: const TextStyle(color: Colors.white70, fontSize: 16),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-  
-              const Spacer(),
-              
-              // ── The Board ──
-              _buildBoard(),
-  
-              const Spacer(),
-              
-              // ── User Info ──
-              _buildPlayerHeader("You", widget.userColor == 'white'),
-              
-              const SizedBox(height: 20),
             ],
           ),
         ),

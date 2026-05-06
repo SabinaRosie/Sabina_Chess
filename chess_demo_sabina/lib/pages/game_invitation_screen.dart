@@ -34,18 +34,32 @@ class _GameInvitationScreenState extends State<GameInvitationScreen> {
       if (mounted) {
         if (result['success']) {
           if (status == 'accepted') {
-            // Navigation to game is handled by the result here OR by the global WS listener
-            // The API returns game_id on success
-            Navigator.pushReplacementNamed(
-              context, 
-              Routes.liveGameRoute,
-              arguments: {
-                'gameId': result['data']['game_id'],
-                'opponentId': widget.senderId,
-                'opponentUsername': widget.senderUsername,
-                'color': 'black', // Invited user plays black
-              }
-            );
+            // BUG 4 FIX: Ensure we check both data root and data field
+            final gameId = (result['data']?['game_id'] ?? result['game_id'])?.toString();
+            debugPrint("CHESS_FLOW: Parsed gameId: $gameId from response: $result");
+            
+            if (gameId == null || gameId.isEmpty) {
+              debugPrint("CHESS_ERROR: gameId is null or empty. Response: $result");
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Error: Game session ID not found.")),
+              );
+              setState(() => isProcessing = false);
+              return;
+            }
+
+            // Navigate to LiveGamePage
+            if (mounted) {
+              debugPrint("CHESS_NAV: Accept successful. gameId: $gameId. Navigating to board...");
+              Navigator.of(context).pushReplacementNamed(
+                Routes.liveGameRoute,
+                arguments: {
+                  'gameId': gameId,
+                  'opponentId': widget.senderId,
+                  'opponentUsername': widget.senderUsername,
+                  'color': 'black',
+                },
+              );
+            }
           } else {
             Navigator.pop(context);
           }

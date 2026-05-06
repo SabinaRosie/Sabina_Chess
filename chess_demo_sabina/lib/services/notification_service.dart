@@ -31,6 +31,8 @@ class NotificationService with WidgetsBindingObserver {
   Stream<int> get invitationCountStream => _invitationCountController.stream;
   int _currentInvitationCount = 0;
   int get currentInvitationCount => _currentInvitationCount;
+  
+  String? currentGameId;
 
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   
@@ -211,12 +213,27 @@ class NotificationService with WidgetsBindingObserver {
       );
     } else if (data['type'] == 'game_invitation_accepted') {
       final color = data['color'];
+      // BUG 4 FIX: Ensure we check both data root and data field
+      final gameId = (data['game_id']?.toString());
+      debugPrint("CHESS_FLOW: Parsed gameId: $gameId from notification");
+      
+      if (gameId == null || gameId.isEmpty) {
+        debugPrint("CHESS_ERROR: game_id is missing in FCM payload!");
+        return;
+      }
+
+      if (currentGameId == gameId) {
+        debugPrint("CHESS_FLOW: Already in game $gameId, skipping navigation.");
+        return;
+      }
+
       if (color == 'white') {
-        // Sender (White) sees the Play Now or Ignore screen
-        navigatorKey.currentState?.pushNamed(
+        // Sender (White) sees the Wooden Play Now screen
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
           Routes.challengeAcceptedRoute,
+          (route) => route.isFirst,
           arguments: {
-            'gameId': data['game_id'],
+            'gameId': gameId,
             'opponentId': int.tryParse(data['opponent_id']?.toString() ?? ''),
             'opponentUsername': data['opponent_name'] ?? "Opponent",
             'opponentPhotoUrl': data['opponent_photo'],
@@ -224,10 +241,11 @@ class NotificationService with WidgetsBindingObserver {
         );
       } else {
         // Receiver (Black) goes directly to the live game
-        navigatorKey.currentState?.pushReplacementNamed(
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
           Routes.liveGameRoute,
+          (route) => route.isFirst,
           arguments: {
-            'gameId': data['game_id'],
+            'gameId': gameId,
             'opponentId': int.tryParse(data['opponent_id']?.toString() ?? ''),
             'opponentUsername': data['opponent_name'] ?? "Opponent",
             'color': 'black',
@@ -270,7 +288,7 @@ class NotificationService with WidgetsBindingObserver {
           } else if (data['type'] == 'game_invitation') {
             _handleGameInvitation(data['data']);
             updateInvitationCount();
-          } else if (data['type'] == 'invitation:accepted') { // Updated from invitation_accepted
+          } else if (data['type'] == 'invitation_accepted') {
             _handleInvitationAccepted(data['data']);
             updateInvitationCount();
           } else if (data['type'] == 'invitation_declined') {
@@ -434,20 +452,24 @@ class NotificationService with WidgetsBindingObserver {
   }
 
   void _handleInvitationAccepted(Map<String, dynamic> data) {
-    // When the sender's invitation is accepted, move them to the challenge accepted screen
-    // The receiver handles their own navigation in GameInvitationScreen
     final color = data['color'];
+    final gameId = data['game_id']?.toString();
+    
+    debugPrint("WS SIGNAL: Handling invitation_accepted. Game: $gameId, Color: $color");
+
     if (color == 'white') {
+      // For the sender, we show the ChallengeAcceptedPage
       navigatorKey.currentState?.pushNamed(
         Routes.challengeAcceptedRoute,
         arguments: {
-          'gameId': data['game_id'],
+          'gameId': gameId,
           'opponentId': data['opponent_id'],
           'opponentUsername': data['opponent_username'],
           'opponentPhotoUrl': data['opponent_photo'],
         },
       );
     }
+    // Receiver (Black) is handled by the pushReplacement in GameInvitationScreen
   }
 
   void _handleInvitationDeclined(Map<String, dynamic> data) {
