@@ -41,6 +41,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
   bool isWhiteInCheck = false;
   bool isBlackInCheck = false;
   bool showGameStartOverlay = false;
+  bool isGameStarted = false;
   Timer? _opponentGraceTimer;
   bool _isGracePeriodActive = false;
 
@@ -148,7 +149,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
         break;
         
       case 'game_over':
-        _showGameOverDialog(data['reason']);
+        _showGameOverDialog(data['reason'], loserUsername: data['loser_username']);
         break;
         
       case 'game_sync':
@@ -192,16 +193,23 @@ class _LiveGamePageState extends State<LiveGamePage> {
         break;
 
       case 'draw_offered':
-        _showDrawOfferDialog();
+        _showDrawOfferDialog(data['username']);
         break;
 
       case 'game_start':
         _opponentGraceTimer?.cancel();
         setState(() {
+          isGameStarted = true;
           showGameStartOverlay = true;
           isOpponentDisconnected = false;
           _isGracePeriodActive = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Game Started! Good luck.", style: TextStyle(fontWeight: FontWeight.bold)),
+            backgroundColor: Colors.green,
+          ),
+        );
         Timer(const Duration(seconds: 2), () {
           if (mounted) setState(() => showGameStartOverlay = false);
         });
@@ -240,7 +248,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
   }
 
   void onSquareTap(int row, int col) {
-    if (board.gameOver) return;
+    if (board.gameOver || !isGameStarted) return;
     
     // Check if it's the user's turn
     bool isUserWhite = widget.userColor == 'white';
@@ -268,7 +276,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
           _channel?.sink.add(jsonEncode({
             'action': 'move',
             'move': moveStr,
-            'fen': 'placeholder' // Fen update handled by server mostly, but could send here
+            'fen': board.generateFEN() 
           }));
           
           if (board.gameOver) {
@@ -296,43 +304,58 @@ class _LiveGamePageState extends State<LiveGamePage> {
     );
   }
 
-  void _showGameOverDialog(String reason) {
+  void _showGameOverDialog(String reason, {String? loserUsername}) {
+    String title = "Game Over";
+    String content = "Reason: $reason";
+    
+    if (reason == 'resignation') {
+      content = "${loserUsername ?? 'Opponent'} resigned. You win!";
+    } else if (reason == 'opponent_quit') {
+      content = "${loserUsername ?? 'Opponent'} quit the game. You win!";
+    } else if (reason == 'draw_accepted') {
+      content = "Draw agreed.";
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Game Over", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
-        content: Text("Reason: $reason", style: const TextStyle(color: Colors.white70)),
+        title: Text(title, style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+        content: Text(content, style: const TextStyle(color: Colors.white, fontSize: 16)),
         actions: [
           TextButton(
             onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
-            child: const Text("Back to Home", style: TextStyle(color: AppColors.secondaryColor)),
+            child: const Text("Back to Home", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
 
-  void _showDrawOfferDialog() {
+  void _showDrawOfferDialog(String? username) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surfaceColor,
-        title: const Text("Draw Offer", style: TextStyle(color: AppColors.secondaryColor)),
-        content: Text("${widget.opponentUsername} offered a draw. Accept?"),
+        title: const Text("Draw Offer", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+        content: Text("${username ?? widget.opponentUsername} offered a draw. Accept?", style: const TextStyle(color: Colors.white)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Decline", style: TextStyle(color: Colors.redAccent)),
+            onPressed: () {
+              Navigator.pop(context);
+              _channel?.sink.add(jsonEncode({'action': 'decline_draw'}));
+            },
+            child: const Text("Decline", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               _channel?.sink.add(jsonEncode({'action': 'accept_draw'}));
             },
-            child: const Text("Accept"),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text("Accept", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -375,14 +398,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
                   context: context,
                   builder: (context) => AlertDialog(
                     backgroundColor: AppColors.surfaceColor,
-                    title: const Text("Resign?", style: TextStyle(color: Colors.white)),
-                    content: const Text("Are you sure you want to resign this game?"),
+                    title: const Text("Resign?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    content: const Text("Are you sure you want to resign this game?", style: TextStyle(color: Colors.white70)),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.white54))),
                       TextButton(onPressed: () {
                         Navigator.pop(context);
                         _resign();
-                      }, child: const Text("Resign", style: TextStyle(color: Colors.redAccent))),
+                      }, child: const Text("Resign", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))),
                     ],
                   ),
                 );
@@ -447,6 +470,31 @@ class _LiveGamePageState extends State<LiveGamePage> {
                     
                     const SizedBox(height: 20),
                   ],
+                ),
+              if (!isGameStarted && !isSyncing)
+                Container(
+                  color: Colors.black45,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceColor.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.secondaryColor.withOpacity(0.5)),
+                      ),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: AppColors.secondaryColor),
+                          SizedBox(height: 20),
+                          Text(
+                            "Waiting for opponent to accept...",
+                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               if (showGameStartOverlay)
                 Container(

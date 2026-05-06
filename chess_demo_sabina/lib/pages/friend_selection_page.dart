@@ -135,7 +135,8 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
     final result = await ApiService.sendInvitation(_accessToken!, user['id']);
     if (mounted) {
       if (result['success']) {
-        _showSuccessPopup();
+        final gameId = result['data']['game_id']?.toString();
+        _showSuccessPopup(gameId, user);
         _fetchSentInvitations();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -145,14 +146,27 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
     }
   }
 
-  void _showSuccessPopup() {
+  void _showSuccessPopup(String? gameId, dynamic user) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         Timer(const Duration(seconds: 1), () {
-          if (Navigator.canPop(context)) {
-            Navigator.pop(context);
+          if (mounted) {
+            Navigator.pop(context); // Close dialog
+            
+            if (gameId != null) {
+              debugPrint("CHESS_NAV: Invitation sent. Navigating directly to LiveGamePage $gameId");
+              Navigator.of(context).pushNamed(
+                Routes.liveGameRoute,
+                arguments: {
+                  'gameId': gameId,
+                  'opponentId': user['id'],
+                  'opponentUsername': user['username'],
+                  'color': 'white', // Sender is always white for now
+                },
+              );
+            }
           }
         });
         return Center(

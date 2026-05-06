@@ -350,4 +350,39 @@ class Board {
       isWhiteTurn = parts[1] == 'w';
     }
   }
+
+  String generateFEN() {
+    String fen = "";
+    for (int r = 0; r < 8; r++) {
+      int emptyCount = 0;
+      for (int c = 0; c < 8; c++) {
+        final piece = board[r][c];
+        if (piece == null) {
+          emptyCount++;
+        } else {
+          if (emptyCount > 0) {
+            fen += emptyCount.toString();
+            emptyCount = 0;
+          }
+          String typeChar = "";
+          switch (piece.type) {
+            case PieceType.pawn: typeChar = 'p'; break;
+            case PieceType.rook: typeChar = 'r'; break;
+            case PieceType.knight: typeChar = 'n'; break;
+            case PieceType.bishop: typeChar = 'b'; break;
+            case PieceType.queen: typeChar = 'q'; break;
+            case PieceType.king: typeChar = 'k'; break;
+          }
+          fen += piece.isWhite ? typeChar.toUpperCase() : typeChar;
+        }
+      }
+      if (emptyCount > 0) {
+        fen += emptyCount.toString();
+      }
+      if (r < 7) fen += "/";
+    }
+    fen += isWhiteTurn ? " w" : " b";
+    fen += " KQkq - 0 1"; 
+    return fen;
+  }
 }

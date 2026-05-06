@@ -228,10 +228,10 @@ class NotificationService with WidgetsBindingObserver {
       }
 
       if (color == 'white') {
-        // Sender (White) sees the Wooden Play Now screen
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        // Sender (White) sees the Wooden Play Now screen as a fallback
+        debugPrint("CHESS_NAV: Fallback navigation to ChallengeAcceptedRoute for game $gameId");
+        navigatorKey.currentState?.pushNamed(
           Routes.challengeAcceptedRoute,
-          (route) => route.isFirst,
           arguments: {
             'gameId': gameId,
             'opponentId': int.tryParse(data['opponent_id']?.toString() ?? ''),
@@ -458,7 +458,14 @@ class NotificationService with WidgetsBindingObserver {
     debugPrint("WS SIGNAL: Handling invitation_accepted. Game: $gameId, Color: $color");
 
     if (color == 'white') {
-      // For the sender, we show the ChallengeAcceptedPage
+      // For the sender, if they are ALREADY in the board, we don't need to do anything
+      if (currentGameId == gameId) {
+        debugPrint("CHESS_FLOW: Sender already on board $gameId. Skipping fallback navigation.");
+        return;
+      }
+
+      // Otherwise, show the ChallengeAcceptedPage as a fallback
+      debugPrint("CHESS_FLOW: Sender NOT on board. Showing fallback ChallengeAcceptedPage.");
       navigatorKey.currentState?.pushNamed(
         Routes.challengeAcceptedRoute,
         arguments: {
