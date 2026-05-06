@@ -274,7 +274,7 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
           child: isLoading
               ? const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor))
               : error != null
-                  ? Center(child: Text(error!, style: const TextStyle(color: Colors.red)))
+                  ? _buildErrorView()
                   : TabBarView(
                       children: [
                         _buildUserList(),
@@ -282,6 +282,41 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
                         _buildSentList(),
                       ],
                     ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.wifi_off_rounded, color: Colors.white24, size: 80),
+            const SizedBox(height: 24),
+            Text(
+              error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: _fetchData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.secondaryColor.withOpacity(0.2),
+                foregroundColor: AppColors.secondaryColor,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: const BorderSide(color: AppColors.secondaryColor, width: 1),
+                ),
+              ),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text("Retry", style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
         ),
       ),
     );

@@ -14,24 +14,35 @@ class ApiService {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return {'success': true, 'data': data};
       } else {
+        String errorMsg = defaultError;
+        if (data is Map) {
+          errorMsg = data['error'] ?? data['detail'] ?? defaultError;
+        }
         return {
           'success': false,
-          'error': data is Map
-              ? (data['error'] ?? data['detail'] ?? defaultError)
-              : defaultError,
+          'error': errorMsg,
         };
       }
     } catch (e) {
-      if (response.statusCode >= 500) {
+      if (response.statusCode == 503 || response.statusCode == 502) {
         return {
           'success': false,
-          'error': 'Server error (500). Please try again later.',
+          'error': 'Server is waking up. Please wait a moment and try again.',
         };
-      } else if (response.statusCode == 404) {
-        return {'success': false, 'error': 'Endpoint not found (404).'};
       }
       return {'success': false, 'error': 'Unexpected response from server.'};
     }
+  }
+
+  static String _formatError(dynamic e) {
+    String err = e.toString();
+    if (err.contains('SocketException') || err.contains('Connection timed out')) {
+      return 'Connection timed out. The server might be waking up or your internet is unstable. Please try again.';
+    }
+    if (err.contains('ClientException')) {
+      return 'Network error. Please check your connection.';
+    }
+    return err;
   }
 
   static Future<Map<String, dynamic>> login(
@@ -44,10 +55,10 @@ class ApiService {
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'username': username, 'password': password}),
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Login failed');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
@@ -66,10 +77,10 @@ class ApiService {
           'email': email,
           'password': password,
         }),
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Signup failed');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
@@ -80,10 +91,10 @@ class ApiService {
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email}),
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Request failed');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
@@ -97,10 +108,10 @@ class ApiService {
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'otp': otp}),
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Verification failed');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
@@ -114,10 +125,10 @@ class ApiService {
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'new_password': newPassword}),
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Reset failed');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
@@ -128,10 +139,10 @@ class ApiService {
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refresh': refreshToken}),
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Token refresh failed');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
@@ -144,10 +155,10 @@ class ApiService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $accessToken',
         },
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Failed to fetch profile');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
@@ -243,10 +254,10 @@ class ApiService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $accessToken',
         },
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Failed to fetch game users');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
@@ -260,10 +271,10 @@ class ApiService {
           'Authorization': 'Bearer $accessToken',
         },
         body: jsonEncode({'receiver_id': receiverId}),
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Failed to send invitation');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
@@ -310,10 +321,10 @@ class ApiService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $accessToken',
         },
-      );
+      ).timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Failed to fetch pending invitations');
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
