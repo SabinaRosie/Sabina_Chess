@@ -132,18 +132,112 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
   Future<void> _sendInvite(dynamic user) async {
     if (_accessToken == null) return;
 
+    debugPrint("CHESS_NAV: Starting _sendInvite for user ${user['username']} (ID: ${user['id']})");
     final result = await ApiService.sendInvitation(_accessToken!, user['id']);
+    
     if (mounted) {
       if (result['success']) {
-        final gameId = result['data']['game_id']?.toString();
-        _showSuccessPopup(gameId, user);
+        // Handle both wrapped and unwrapped data structure for robustness
+        final data = result['data'] ?? {};
+        final gameId = (data['game_id'] ?? result['game_id'])?.toString();
+        debugPrint("CHESS_NAV: Server responded success. Full Result: $result");
+        
+        if (gameId != null && gameId.isNotEmpty) {
+          _showMinimalPopup("Invitation sent! Joining game...");
+          
+          debugPrint("CHESS_NAV: Waiting 1s before navigating to board $gameId");
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted) {
+              // 🔹 FIX: Set currentGameId immediately to prevent redundant navigation from signals
+              NotificationService().currentGameId = gameId;
+              
+              NotificationService().navigatorKey.currentState?.pushReplacementNamed(
+                Routes.liveGameRoute,
+                arguments: {
+                  'gameId': gameId,
+                  'opponentId': user['id'],
+                  'opponentUsername': user['username'],
+                  'color': 'white',
+                },
+              );
+            }
+          });
+        } else {
+          debugPrint("CHESS_ERROR: game_id is missing in response! Result: $result");
+          _showMinimalPopup("Error: Could not start game session.", isError: true);
+        }
         _fetchSentInvitations();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['error'] ?? "Failed to send invitation")),
-        );
+        debugPrint("CHESS_ERROR: sendInvitation failed: ${result['error']}");
+        _showMinimalPopup(result['error'] ?? "Failed to send invitation", isError: true);
       }
     }
+  }
+
+  void _showMinimalPopup(String message, {bool isError = false}) {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black26,
+      builder: (context) {
+        Future.delayed(const Duration(seconds: 2), () {
+          if (Navigator.canPop(context)) Navigator.pop(context);
+        });
+        return Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              margin: const EdgeInsets.symmetric(horizontal: 40),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isError 
+                    ? [Colors.red.shade900, Colors.red.shade700]
+                    : AppColors.woodGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.5),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                border: Border.all(
+                  color: isError ? Colors.red.shade300 : AppColors.secondaryColor.withOpacity(0.5),
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isError ? Icons.error_outline : Icons.check_circle_outline,
+                    color: isError ? Colors.white : AppColors.secondaryColor,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      message,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showSuccessPopup(String? gameId, dynamic user) {

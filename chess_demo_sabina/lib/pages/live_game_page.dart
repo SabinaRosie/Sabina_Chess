@@ -178,6 +178,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
             isOpponentDisconnected = false;
             _isGracePeriodActive = false;
             _opponentGraceTimer?.cancel();
+            // 🔹 FIX: If opponent is online, the game is effectively started
+            if (!isGameStarted) {
+              isGameStarted = true;
+              showGameStartOverlay = true;
+              Timer(const Duration(seconds: 2), () {
+                if (mounted) setState(() => showGameStartOverlay = false);
+              });
+            }
           }
         });
 

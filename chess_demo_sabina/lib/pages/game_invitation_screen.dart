@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../utils/color_utils.dart';
 import '../utils/route_generator.dart';
 import '../utils/route_const.dart';
+import '../services/notification_service.dart';
 
 class GameInvitationScreen extends StatefulWidget {
   final dynamic invitationId;
@@ -50,6 +51,10 @@ class _GameInvitationScreenState extends State<GameInvitationScreen> {
             // Navigate to LiveGamePage
             if (mounted) {
               debugPrint("CHESS_NAV: Accept successful. gameId: $gameId. Navigating to board...");
+              
+              // 🔹 FIX: Set currentGameId immediately to prevent redundant navigation from signals
+              NotificationService().currentGameId = gameId;
+
               Navigator.of(context).pushReplacementNamed(
                 Routes.liveGameRoute,
                 arguments: {
