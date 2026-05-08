@@ -32,6 +32,9 @@ class NotificationService with WidgetsBindingObserver {
   int _currentInvitationCount = 0;
   int get currentInvitationCount => _currentInvitationCount;
   
+  final StreamController<Map<String, dynamic>> _invitationEventController = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get invitationEventStream => _invitationEventController.stream;
+
   String? currentGameId;
 
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -294,6 +297,8 @@ class NotificationService with WidgetsBindingObserver {
           } else if (data['type'] == 'invitation_declined') {
             _handleInvitationDeclined(data['data']);
             updateInvitationCount();
+          } else if (data['type'] == 'invitation_cancelled') {
+            updateInvitationCount();
           }
         },
         onDone: _reconnect,
@@ -477,11 +482,25 @@ class NotificationService with WidgetsBindingObserver {
       );
     }
     // Receiver (Black) is handled by the pushReplacement in GameInvitationScreen
+    
+    // Broadcast to waiting screen
+    _invitationEventController.add({
+      'type': 'accepted',
+      'game_id': gameId,
+      'opponent_id': data['opponent_id'],
+      'opponent_username': data['opponent_username'],
+    });
   }
 
   void _handleInvitationDeclined(Map<String, dynamic> data) {
     final context = navigatorKey.currentContext;
     if (context == null) return;
+
+    // Broadcast to waiting screen
+    _invitationEventController.add({
+      'type': 'declined',
+      'opponent_username': data['sender_username'],
+    });
 
     // Pop any waiting dialog if it exists (via context)
     // Actually, it's better to just show a snackbar or alert

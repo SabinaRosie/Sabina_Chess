@@ -15,6 +15,7 @@ import '../pages/friend_selection_page.dart';
 import '../pages/live_game_page.dart';
 import '../pages/game_invitation_screen.dart';
 import '../pages/challenge_accepted_page.dart';
+import '../pages/game_invitation_waiting_screen.dart';
 import 'route_const.dart';
 
 class RouteGenerator {
@@ -106,6 +107,16 @@ class RouteGenerator {
             opponentId: args['opponentId'],
             opponentUsername: args['opponentUsername'],
             opponentPhotoUrl: args['opponentPhotoUrl'],
+          ),
+        );
+
+      case Routes.invitationWaitingRoute:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => GameInvitationWaitingScreen(
+            gameId: args['gameId'],
+            opponentId: args['opponentId'],
+            opponentUsername: args['opponentUsername'],
           ),
         );
 

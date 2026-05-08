@@ -479,31 +479,6 @@ class _LiveGamePageState extends State<LiveGamePage> {
                     const SizedBox(height: 20),
                   ],
                 ),
-              if (!isGameStarted && !isSyncing)
-                Container(
-                  color: Colors.black45,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceColor.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.secondaryColor.withOpacity(0.5)),
-                      ),
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(color: AppColors.secondaryColor),
-                          SizedBox(height: 20),
-                          Text(
-                            "Waiting for opponent to accept...",
-                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
               if (showGameStartOverlay)
                 Container(
                   color: Colors.black54,

@@ -152,12 +152,11 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
               NotificationService().currentGameId = gameId;
               
               NotificationService().navigatorKey.currentState?.pushReplacementNamed(
-                Routes.liveGameRoute,
+                Routes.invitationWaitingRoute,
                 arguments: {
                   'gameId': gameId,
                   'opponentId': user['id'],
                   'opponentUsername': user['username'],
-                  'color': 'white',
                 },
               );
             }
