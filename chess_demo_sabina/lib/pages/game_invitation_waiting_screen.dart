@@ -7,12 +7,14 @@ import '../utils/color_utils.dart';
 import '../utils/route_const.dart';
 
 class GameInvitationWaitingScreen extends StatefulWidget {
+  final dynamic invitationId;
   final String gameId;
   final int opponentId;
   final String opponentUsername;
 
   const GameInvitationWaitingScreen({
     super.key,
+    required this.invitationId,
     required this.gameId,
     required this.opponentId,
     required this.opponentUsername,
@@ -29,6 +31,7 @@ class _GameInvitationWaitingScreenState extends State<GameInvitationWaitingScree
   Timer? _timeoutTimer;
   int _secondsLeft = 120;
   bool _isCancelled = false;
+  Timer? _fallbackTimer;
 
   @override
   void initState() {
@@ -44,6 +47,7 @@ class _GameInvitationWaitingScreenState extends State<GameInvitationWaitingScree
 
     _startTimeout();
     _listenToInvitations();
+    _startFallbackPolling();
   }
 
   void _startTimeout() {
@@ -59,18 +63,58 @@ class _GameInvitationWaitingScreenState extends State<GameInvitationWaitingScree
   void _listenToInvitations() {
     _invitationSub = NotificationService().invitationEventStream.listen((event) {
       if (!mounted) return;
+      
+      debugPrint("WAITING_SCREEN: Received event ${event['type']} for game ${event['game_id']}");
 
-      if (event['type'] == 'accepted' && event['game_id'] == widget.gameId) {
+      // Ensure we compare game_id as a string to avoid type mismatches
+      final incomingGameId = event['game_id']?.toString();
+      final targetGameId = widget.gameId.toString();
+
+      if (event['type'] == 'accepted' && incomingGameId == targetGameId) {
+        debugPrint("WAITING_SCREEN: Match! Navigating to board.");
         _handleAccepted(event);
-      } else if (event['type'] == 'declined' && event['opponent_username'] == widget.opponentUsername) {
+      } else if (event['type'] == 'declined' &&
+          event['opponent_username'] == widget.opponentUsername) {
         _handleDeclined();
       }
     });
   }
 
+  void _startFallbackPolling() {
+    _fallbackTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _checkInvitationStatus();
+    });
+  }
+
+  Future<void> _checkInvitationStatus() async {
+    if (!mounted || _isCancelled) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    if (token == null) return;
+
+    final result =
+        await ApiService.getInvitationStatus(token, widget.invitationId);
+    if (result['success']) {
+      final data = result['data'];
+      if (data['status'] == 'accepted') {
+        debugPrint(
+            "WAITING_SCREEN: Fallback detected ACCEPTED status. Navigating...");
+        _handleAccepted({
+          'game_id': data['game_id'],
+          'opponent_id': data['opponent_id'],
+          'opponent_username': data['opponent_username'],
+        });
+      } else if (data['status'] == 'declined') {
+        _handleDeclined();
+      }
+    }
+  }
+
   void _handleAccepted(Map<String, dynamic> event) {
     _timeoutTimer?.cancel();
     _invitationSub?.cancel();
+    _fallbackTimer?.cancel();
     
     // Navigate to Live Game
     Navigator.pushReplacementNamed(
@@ -105,9 +149,8 @@ class _GameInvitationWaitingScreenState extends State<GameInvitationWaitingScree
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     if (token != null) {
-      // Find the invitation ID if needed, or if game_id is used for cancellation
-      // For now we just go back as the backend will clean up or the user can cancel from Sent tab
-      await ApiService.cancelInvitation(token, widget.gameId);
+      // Use the actual invitationId for proper cancellation
+      await ApiService.cancelInvitation(token, widget.invitationId);
     }
     _close();
   }
@@ -134,6 +177,7 @@ class _GameInvitationWaitingScreenState extends State<GameInvitationWaitingScree
     _pulseController.dispose();
     _invitationSub?.cancel();
     _timeoutTimer?.cancel();
+    _fallbackTimer?.cancel();
     super.dispose();
   }
 

@@ -18,10 +18,7 @@ class ApiService {
         if (data is Map) {
           errorMsg = data['error'] ?? data['detail'] ?? defaultError;
         }
-        return {
-          'success': false,
-          'error': errorMsg,
-        };
+        return {'success': false, 'error': errorMsg};
       }
     } catch (e) {
       if (response.statusCode == 503 || response.statusCode == 502) {
@@ -36,7 +33,8 @@ class ApiService {
 
   static String _formatError(dynamic e) {
     String err = e.toString();
-    if (err.contains('SocketException') || err.contains('Connection timed out')) {
+    if (err.contains('SocketException') ||
+        err.contains('Connection timed out')) {
       return 'Connection timed out. The server might be waking up or your internet is unstable. Please try again.';
     }
     if (err.contains('ClientException')) {
@@ -51,11 +49,13 @@ class ApiService {
   ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/login');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'username': username, 'password': password}),
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Login failed');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
@@ -69,15 +69,17 @@ class ApiService {
   ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/signup');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'username': username,
-          'email': email,
-          'password': password,
-        }),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'username': username,
+              'email': email,
+              'password': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Signup failed');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
@@ -87,11 +89,13 @@ class ApiService {
   static Future<Map<String, dynamic>> forgotPassword(String email) async {
     final url = Uri.parse('${AppConstants.baseUrl}/forgot-password');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email}),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email}),
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Request failed');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
@@ -104,11 +108,13 @@ class ApiService {
   ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/verify-otp');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'otp': otp}),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'otp': otp}),
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Verification failed');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
@@ -121,11 +127,13 @@ class ApiService {
   ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/reset-password');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'new_password': newPassword}),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'new_password': newPassword}),
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Reset failed');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
@@ -135,11 +143,13 @@ class ApiService {
   static Future<Map<String, dynamic>> refreshToken(String refreshToken) async {
     final url = Uri.parse('${AppConstants.baseUrl}/token/refresh');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh': refreshToken}),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh': refreshToken}),
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Token refresh failed');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
@@ -149,13 +159,15 @@ class ApiService {
   static Future<Map<String, dynamic>> getProfile(String accessToken) async {
     final url = Uri.parse('${AppConstants.baseUrl}/profile');
     try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .get(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Failed to fetch profile');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
@@ -216,7 +228,9 @@ class ApiService {
         if (exp != null) {
           final expiryDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
           // If expires in less than 30 seconds, refresh now
-          if (expiryDate.isBefore(DateTime.now().add(const Duration(seconds: 30)))) {
+          if (expiryDate.isBefore(
+            DateTime.now().add(const Duration(seconds: 30)),
+          )) {
             return await forceRefreshToken();
           }
         }
@@ -224,7 +238,7 @@ class ApiService {
     } catch (e) {
       debugPrint('Token parse error: $e');
     }
-    
+
     return accessToken;
   }
 
@@ -248,37 +262,48 @@ class ApiService {
   static Future<Map<String, dynamic>> getGameUsers(String accessToken) async {
     final url = Uri.parse('${AppConstants.baseUrl}/game/users');
     try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .get(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Failed to fetch game users');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
     }
   }
 
-  static Future<Map<String, dynamic>> sendInvitation(String accessToken, int receiverId) async {
+  static Future<Map<String, dynamic>> sendInvitation(
+    String accessToken,
+    int receiverId,
+  ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/game/invite');
     try {
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode({'receiver_id': receiverId}),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode({'receiver_id': receiverId}),
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Failed to send invitation');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
     }
   }
 
-  static Future<Map<String, dynamic>> respondInvitation(String accessToken, dynamic invitationId, String status) async {
+  static Future<Map<String, dynamic>> respondInvitation(
+    String accessToken,
+    dynamic invitationId,
+    String status,
+  ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/game/respond');
     try {
       final response = await http.post(
@@ -295,7 +320,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> cancelInvitation(String accessToken, dynamic invitationId) async {
+  static Future<Map<String, dynamic>> cancelInvitation(
+    String accessToken,
+    dynamic invitationId,
+  ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/game/cancel');
     try {
       final response = await http.post(
@@ -312,23 +340,29 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> getPendingInvitations(String accessToken) async {
+  static Future<Map<String, dynamic>> getPendingInvitations(
+    String accessToken,
+  ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/game/invitations/pending');
     try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .get(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Failed to fetch pending invitations');
     } catch (e) {
       return {'success': false, 'error': _formatError(e)};
     }
   }
 
-  static Future<Map<String, dynamic>> getSentInvitations(String accessToken) async {
+  static Future<Map<String, dynamic>> getSentInvitations(
+    String accessToken,
+  ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/game/invitations/sent');
     try {
       final response = await http.get(
@@ -341,6 +375,28 @@ class ApiService {
       return _handleResponse(response, 'Failed to fetch sent invitations');
     } catch (e) {
       return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getInvitationStatus(
+    String accessToken,
+    dynamic invitationId,
+  ) async {
+    final url =
+        Uri.parse('${AppConstants.baseUrl}/game/invitation/$invitationId/status');
+    try {
+      final response = await http
+          .get(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+      return _handleResponse(response, 'Failed to fetch invitation status');
+    } catch (e) {
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 }

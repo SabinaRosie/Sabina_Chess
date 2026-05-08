@@ -140,6 +140,7 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
         // Handle both wrapped and unwrapped data structure for robustness
         final data = result['data'] ?? {};
         final gameId = (data['game_id'] ?? result['game_id'])?.toString();
+        final invitationId = data['invitation_id'] ?? result['invitation_id'];
         debugPrint("CHESS_NAV: Server responded success. Full Result: $result");
         
         if (gameId != null && gameId.isNotEmpty) {
@@ -154,6 +155,7 @@ class _FriendSelectionPageState extends State<FriendSelectionPage> {
               NotificationService().navigatorKey.currentState?.pushReplacementNamed(
                 Routes.invitationWaitingRoute,
                 arguments: {
+                  'invitationId': invitationId,
                   'gameId': gameId,
                   'opponentId': user['id'],
                   'opponentUsername': user['username'],

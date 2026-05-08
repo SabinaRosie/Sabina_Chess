@@ -40,7 +40,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
   List<List<int>> validMoves = [];
   bool isWhiteInCheck = false;
   bool isBlackInCheck = false;
-  bool showGameStartOverlay = false;
+  bool showGameStartOverlay = true;
   bool isGameStarted = false;
   Timer? _opponentGraceTimer;
   bool _isGracePeriodActive = false;
@@ -51,6 +51,13 @@ class _LiveGamePageState extends State<LiveGamePage> {
     NotificationService().currentGameId = widget.gameId;
     board = Board();
     _connectWebSocket();
+
+    // 🔹 Hide Game Start overlay after 1.5 seconds
+    Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        setState(() => showGameStartOverlay = false);
+      }
+    });
   }
 
   void _connectWebSocket() async {
@@ -181,10 +188,6 @@ class _LiveGamePageState extends State<LiveGamePage> {
             // 🔹 FIX: If opponent is online, the game is effectively started
             if (!isGameStarted) {
               isGameStarted = true;
-              showGameStartOverlay = true;
-              Timer(const Duration(seconds: 2), () {
-                if (mounted) setState(() => showGameStartOverlay = false);
-              });
             }
           }
         });
@@ -208,7 +211,6 @@ class _LiveGamePageState extends State<LiveGamePage> {
         _opponentGraceTimer?.cancel();
         setState(() {
           isGameStarted = true;
-          showGameStartOverlay = true;
           isOpponentDisconnected = false;
           _isGracePeriodActive = false;
         });
@@ -218,9 +220,6 @@ class _LiveGamePageState extends State<LiveGamePage> {
             backgroundColor: Colors.green,
           ),
         );
-        Timer(const Duration(seconds: 2), () {
-          if (mounted) setState(() => showGameStartOverlay = false);
-        });
         break;
     }
   }
@@ -480,32 +479,49 @@ class _LiveGamePageState extends State<LiveGamePage> {
                   ],
                 ),
               if (showGameStartOverlay)
-                Container(
-                  color: Colors.black54,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          "GAME START",
-                          style: TextStyle(
-                            color: AppColors.secondaryColor,
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 4,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          "${widget.userColor.toUpperCase()} vs ${widget.opponentUsername.toUpperCase()}",
-                          style: const TextStyle(color: Colors.white70, fontSize: 16),
-                        ),
-                      ],
+                _buildGameStartOverlay(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGameStartOverlay() {
+    return Container(
+      color: Colors.black.withOpacity(0.7),
+      child: Center(
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 500),
+          builder: (context, value, child) {
+            return Transform.scale(
+              scale: value,
+              child: Opacity(
+                opacity: value,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: AppColors.woodGradient),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.secondaryColor, width: 2),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, spreadRadius: 5),
+                    ],
+                  ),
+                  child: const Text(
+                    "GAME STARTED",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 4,
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

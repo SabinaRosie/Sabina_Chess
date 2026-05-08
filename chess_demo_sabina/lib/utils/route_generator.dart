@@ -114,6 +114,7 @@ class RouteGenerator {
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(
           builder: (_) => GameInvitationWaitingScreen(
+            invitationId: args['invitationId'],
             gameId: args['gameId'],
             opponentId: args['opponentId'],
             opponentUsername: args['opponentUsername'],
