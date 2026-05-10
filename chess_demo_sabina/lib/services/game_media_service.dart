@@ -6,14 +6,22 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../utils/const.dart';
 
-class GameVoiceService {
+class GameMediaService {
   WebSocketChannel? _channel;
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
   MediaStream? _remoteStream;
   
   final ValueNotifier<MediaStream?> remoteStreamNotifier = ValueNotifier<MediaStream?>(null);
+  final ValueNotifier<MediaStream?> localStreamNotifier = ValueNotifier<MediaStream?>(null);
   final ValueNotifier<bool> isOpponentMuted = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> isOpponentVideoEnabled = ValueNotifier<bool>(false);
+
+  final _videoRequestController = StreamController<void>.broadcast();
+  Stream<void> get onVideoRequest => _videoRequestController.stream;
+
+  final _videoResponseController = StreamController<bool>.broadcast();
+  Stream<bool> get onVideoResponse => _videoResponseController.stream;
 
   bool _isCaller = false;
   String? _gameId;
@@ -41,9 +49,8 @@ class GameVoiceService {
     _token = token;
     _isCaller = isCaller;
 
-    // Use the specific 'call' signaling route on the backend
     final url = Uri.parse('${AppConstants.webSocketUrl}/call/$gameId/?token=$token');
-    debugPrint("GAME_VOICE_WS: Connecting to $url");
+    debugPrint("GAME_MEDIA_WS: Connecting to $url");
     _channel = WebSocketChannel.connect(url);
 
     _channel!.stream.listen(
@@ -51,8 +58,8 @@ class GameVoiceService {
         final data = jsonDecode(message);
         _handleMessage(data);
       },
-      onDone: () => debugPrint("GAME_VOICE_WS: Disconnected"),
-      onError: (e) => debugPrint("GAME_VOICE_WS: Error $e"),
+      onDone: () => debugPrint("GAME_MEDIA_WS: Disconnected"),
+      onError: (e) => debugPrint("GAME_MEDIA_WS: Error $e"),
     );
 
     await _initPeerConnection();
@@ -76,11 +83,13 @@ class GameVoiceService {
     };
 
     _peerConnection!.onAddStream = (stream) {
+      debugPrint("GAME_MEDIA_WEBRTC: Remote stream added: ${stream.id}");
       _remoteStream = stream;
       remoteStreamNotifier.value = stream;
     };
 
     _peerConnection!.onTrack = (event) {
+      debugPrint("GAME_MEDIA_WEBRTC: onTrack: ${event.track.kind}");
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams[0];
         remoteStreamNotifier.value = _remoteStream;
@@ -91,8 +100,10 @@ class GameVoiceService {
   }
 
   Future<void> _setupLocalStream() async {
-    var status = await Permission.microphone.request();
-    if (!status.isGranted) return;
+    var micStatus = await Permission.microphone.request();
+    var camStatus = await Permission.camera.request();
+    
+    if (!micStatus.isGranted) return;
 
     final constraints = {
       'audio': {
@@ -100,13 +111,25 @@ class GameVoiceService {
         'noiseSuppression': true,
         'autoGainControl': true,
       },
-      'video': false,
+      'video': {
+        'mandatory': {
+          'minWidth': '640',
+          'minHeight': '480',
+          'minFrameRate': '30',
+        },
+        'facingMode': 'user',
+        'optional': [],
+      },
     };
 
     _localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    localStreamNotifier.value = _localStream;
     
-    // Default: Muted
+    // Default: BOTH Audio and Video Muted initially for privacy
     for (var track in _localStream!.getAudioTracks()) {
+      track.enabled = false;
+    }
+    for (var track in _localStream!.getVideoTracks()) {
       track.enabled = false;
     }
 
@@ -122,6 +145,26 @@ class GameVoiceService {
       }
       _sendSignal('toggle_mute', {'isMuted': !enabled});
     }
+  }
+
+  void toggleVideo(bool enabled) {
+    if (_localStream != null) {
+      for (var track in _localStream!.getVideoTracks()) {
+        track.enabled = enabled;
+      }
+      _sendSignal('toggle_video', {'isVideoEnabled': enabled});
+      // Force update of local notifier
+      localStreamNotifier.value = null;
+      localStreamNotifier.value = _localStream;
+    }
+  }
+
+  void requestVideo() {
+    _sendSignal('video_request', {});
+  }
+
+  void respondVideo(bool accepted) {
+    _sendSignal('video_response', {'accepted': accepted});
   }
 
   Future<void> _createOffer() async {
@@ -157,6 +200,18 @@ class GameVoiceService {
       case 'toggle_mute':
         isOpponentMuted.value = payload['isMuted'] ?? false;
         break;
+
+      case 'toggle_video':
+        isOpponentVideoEnabled.value = payload['isVideoEnabled'] ?? false;
+        break;
+
+      case 'video_request':
+        _videoRequestController.add(null);
+        break;
+        
+      case 'video_response':
+        _videoResponseController.add(payload['accepted'] ?? false);
+        break;
     }
   }
 
@@ -174,5 +229,6 @@ class GameVoiceService {
     _remoteStream?.dispose();
     _peerConnection?.dispose();
     _channel?.sink.close();
+    _videoRequestController.close();
   }
 }

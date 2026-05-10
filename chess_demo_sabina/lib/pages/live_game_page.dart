@@ -9,7 +9,8 @@ import '../utils/const.dart';
 import '../widgets/square.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notification_service.dart';
-import '../services/game_voice_service.dart';
+import '../services/game_media_service.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 class LiveGamePage extends StatefulWidget {
   final String gameId;
@@ -46,9 +47,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
   Timer? _opponentGraceTimer;
   bool _isGracePeriodActive = false;
   
-  // 🎙️ Voice Signaling
-  final GameVoiceService _voiceService = GameVoiceService();
+  // 🎙️ Media Signaling
+  final GameMediaService _mediaService = GameMediaService();
   bool isMicMuted = true;
+  bool isVideoEnabled = false;
+  final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
+  final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
+  StreamSubscription? _videoRequestSub;
+  StreamSubscription? _videoResponseSub;
 
   @override
   void initState() {
@@ -77,10 +83,37 @@ class _LiveGamePageState extends State<LiveGamePage> {
     final url = Uri.parse('${AppConstants.webSocketUrl}/game/${widget.gameId}/?token=$token');
     _channel = WebSocketChannel.connect(url);
     
-    // 🎙️ Initialize Voice Signaling
-    // Senders are 'white' and usually the 'caller' in this context
+    // 🎙️ Initialize Media Signaling
     bool isCaller = widget.userColor == 'white';
-    _voiceService.connect(widget.gameId, token, isCaller);
+    _mediaService.connect(widget.gameId, token, isCaller);
+
+    _mediaService.localStreamNotifier.addListener(() {
+      _localRenderer.srcObject = _mediaService.localStreamNotifier.value;
+      if (mounted) setState(() {});
+    });
+
+    _mediaService.remoteStreamNotifier.addListener(() {
+      _remoteRenderer.srcObject = _mediaService.remoteStreamNotifier.value;
+      if (mounted) setState(() {});
+    });
+
+    _videoRequestSub = _mediaService.onVideoRequest.listen((_) {
+      _showVideoRequestDialog();
+    });
+
+    _videoResponseSub = _mediaService.onVideoResponse.listen((accepted) {
+      if (accepted) {
+        setState(() => isVideoEnabled = true);
+        _mediaService.toggleVideo(true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Opponent accepted video call!")),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Opponent declined video call.")),
+        );
+      }
+    });
     
     // 🔹 Add a timeout for synchronization (increased to 60s)
     Timer(const Duration(seconds: 60), () {
@@ -395,7 +428,11 @@ class _LiveGamePageState extends State<LiveGamePage> {
     _opponentGraceTimer?.cancel();
     _heartbeatTimer?.cancel();
     _channel?.sink.close();
-    _voiceService.dispose();
+    _videoRequestSub?.cancel();
+    _videoResponseSub?.cancel();
+    _mediaService.dispose();
+    _localRenderer.dispose();
+    _remoteRenderer.dispose();
     super.dispose();
   }
 
@@ -443,24 +480,8 @@ class _LiveGamePageState extends State<LiveGamePage> {
               onPressed: _offerDraw,
               tooltip: "Offer Draw",
             ),
-            ValueListenableBuilder<bool>(
-              valueListenable: _voiceService.isOpponentMuted,
-              builder: (context, isOpponentMuted, _) {
-                return IconButton(
-                  icon: Icon(
-                    isMicMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                    color: isMicMuted ? Colors.white54 : Colors.greenAccent,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      isMicMuted = !isMicMuted;
-                    });
-                    _voiceService.toggleMic(!isMicMuted);
-                  },
-                  tooltip: isMicMuted ? "Unmute Mic" : "Mute Mic",
-                );
-              },
-            ),
+            _buildMediaControls(),
+            const SizedBox(width: 8),
           ],
         ),
         body: Container(
@@ -517,9 +538,129 @@ class _LiveGamePageState extends State<LiveGamePage> {
                 ),
               if (showGameStartOverlay)
                 _buildGameStartOverlay(),
+              
+              // 🎥 Video Call Overlays
+              if (isVideoEnabled || _mediaService.isOpponentVideoEnabled.value)
+                _buildVideoOverlays(),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMediaControls() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: Icon(
+            isMicMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            color: isMicMuted ? Colors.white54 : Colors.greenAccent,
+          ),
+          onPressed: () {
+            setState(() => isMicMuted = !isMicMuted);
+            _mediaService.toggleMic(!isMicMuted);
+          },
+          tooltip: isMicMuted ? "Unmute Mic" : "Mute Mic",
+        ),
+        IconButton(
+          icon: Icon(
+            isVideoEnabled ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+            color: isVideoEnabled ? Colors.greenAccent : Colors.white54,
+          ),
+          onPressed: _handleVideoToggle,
+          tooltip: isVideoEnabled ? "Disable Video" : "Request Video Call",
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVideoOverlays() {
+    return Positioned(
+      top: 100,
+      right: 16,
+      child: Column(
+        children: [
+          // Remote Video
+          ValueListenableBuilder<bool>(
+            valueListenable: _mediaService.isOpponentVideoEnabled,
+            builder: (context, enabled, _) {
+              if (!enabled) return const SizedBox.shrink();
+              return Container(
+                width: 120,
+                height: 160,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.secondaryColor, width: 2),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: RTCVideoView(_remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                ),
+              );
+            },
+          ),
+          // Local Video
+          if (isVideoEnabled)
+            Container(
+              width: 120,
+              height: 160,
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white24, width: 2),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _handleVideoToggle() {
+    if (isVideoEnabled) {
+      setState(() => isVideoEnabled = false);
+      _mediaService.toggleVideo(false);
+    } else {
+      // Send request to other player
+      _mediaService.requestVideo();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Video call request sent to opponent...")),
+      );
+    }
+  }
+
+  void _showVideoRequestDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceColor,
+        title: const Text("Video Call Request", style: TextStyle(color: Colors.white)),
+        content: const Text("Your opponent wants to start a video call. Do you want to join?", style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _mediaService.respondVideo(false);
+            },
+            child: const Text("Decline", style: TextStyle(color: Colors.redAccent)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _mediaService.respondVideo(true);
+              setState(() => isVideoEnabled = true);
+              _mediaService.toggleVideo(true);
+            },
+            child: const Text("Accept", style: TextStyle(color: Colors.greenAccent)),
+          ),
+        ],
       ),
     );
   }

@@ -128,20 +128,17 @@ class NotificationService with WidgetsBindingObserver {
     );
     
     // Create the high importance channel
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'high_importance_channel', // id
-      'High Importance Notifications', // title
-      description: 'This channel is used for important notifications.',
-      importance: Importance.max,
+    const AndroidNotificationChannel normalChannel = AndroidNotificationChannel(
+      'normal_channel',
+      'General Notifications',
+      description: 'This channel is used for standard notifications.',
+      importance: Importance.defaultImportance,
       playSound: true,
-      enableVibration: true,
     );
-
-    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
-        _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidImplementation != null) {
       await androidImplementation.createNotificationChannel(channel);
+      await androidImplementation.createNotificationChannel(normalChannel);
     }
 
     await _localNotifications.initialize(
@@ -159,14 +156,17 @@ class NotificationService with WidgetsBindingObserver {
     final notification = message.notification;
     final data = message.data;
 
-    const androidPlatformChannelSpecifics = AndroidNotificationDetails(
-      'high_importance_channel', 'High Importance Notifications',
-      importance: Importance.max,
-      priority: Priority.high,
+    final isCall = data['type'] == 'incoming_call';
+    
+    final androidPlatformChannelSpecifics = AndroidNotificationDetails(
+      isCall ? 'high_importance_channel' : 'normal_channel',
+      isCall ? 'High Importance Notifications' : 'General Notifications',
+      importance: isCall ? Importance.max : Importance.defaultImportance,
+      priority: isCall ? Priority.high : Priority.defaultPriority,
       showWhen: true,
       color: AppColors.secondaryColor,
       enableLights: true,
-      fullScreenIntent: true, // Crucial for showing on top of lock screen
+      fullScreenIntent: isCall, 
       category: AndroidNotificationCategory.message,
       actions: <AndroidNotificationAction>[
         AndroidNotificationAction(
