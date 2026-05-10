@@ -226,7 +226,7 @@ class NotificationService with WidgetsBindingObserver {
       }
 
       if (currentGameId == gameId) {
-        debugPrint("CHESS_FLOW: Already in game $gameId, skipping navigation.");
+        debugPrint("CHESS_FLOW: Already in game $gameId or navigating to it, skipping redundant background navigation.");
         return;
       }
 

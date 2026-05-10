@@ -55,8 +55,9 @@ class _GameInvitationScreenState extends State<GameInvitationScreen> {
               // 🔹 FIX: Set currentGameId immediately to prevent redundant navigation from signals
               NotificationService().currentGameId = gameId;
 
-              Navigator.of(context).pushReplacementNamed(
+              Navigator.of(context).pushNamedAndRemoveUntil(
                 Routes.liveGameRoute,
+                (route) => route.isFirst, // Keep only the bottom-most route (Home) if needed, or clear all
                 arguments: {
                   'gameId': gameId,
                   'opponentId': widget.senderId,

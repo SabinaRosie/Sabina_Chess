@@ -9,6 +9,7 @@ import '../utils/const.dart';
 import '../widgets/square.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notification_service.dart';
+import '../services/game_voice_service.dart';
 
 class LiveGamePage extends StatefulWidget {
   final String gameId;
@@ -44,6 +45,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
   bool isGameStarted = false;
   Timer? _opponentGraceTimer;
   bool _isGracePeriodActive = false;
+  
+  // 🎙️ Voice Signaling
+  final GameVoiceService _voiceService = GameVoiceService();
+  bool isMicMuted = true;
 
   @override
   void initState() {
@@ -71,6 +76,11 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
     final url = Uri.parse('${AppConstants.webSocketUrl}/game/${widget.gameId}/?token=$token');
     _channel = WebSocketChannel.connect(url);
+    
+    // 🎙️ Initialize Voice Signaling
+    // Senders are 'white' and usually the 'caller' in this context
+    bool isCaller = widget.userColor == 'white';
+    _voiceService.connect(widget.gameId, token, isCaller);
     
     // 🔹 Add a timeout for synchronization (increased to 60s)
     Timer(const Duration(seconds: 60), () {
@@ -288,6 +298,12 @@ class _LiveGamePageState extends State<LiveGamePage> {
           
           if (board.gameOver) {
             _showGameOverDialog('king_captured');
+            // 🔹 Notify server that game is over
+            _channel?.sink.add(jsonEncode({
+              'action': 'game_over',
+              'reason': 'king_captured',
+              'winner_id': widget.userColor == 'white' ? null : null, // Backend handles IDs
+            }));
           }
         }
 
@@ -321,6 +337,8 @@ class _LiveGamePageState extends State<LiveGamePage> {
       content = "${loserUsername ?? 'Opponent'} quit the game. You win!";
     } else if (reason == 'draw_accepted') {
       content = "Draw agreed.";
+    } else if (reason == 'king_captured') {
+      content = "The King has been captured! Game Over.";
     }
 
     showDialog(
@@ -377,6 +395,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
     _opponentGraceTimer?.cancel();
     _heartbeatTimer?.cancel();
     _channel?.sink.close();
+    _voiceService.dispose();
     super.dispose();
   }
 
@@ -423,6 +442,24 @@ class _LiveGamePageState extends State<LiveGamePage> {
               icon: const Icon(Icons.handshake_rounded, color: Colors.amber),
               onPressed: _offerDraw,
               tooltip: "Offer Draw",
+            ),
+            ValueListenableBuilder<bool>(
+              valueListenable: _voiceService.isOpponentMuted,
+              builder: (context, isOpponentMuted, _) {
+                return IconButton(
+                  icon: Icon(
+                    isMicMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                    color: isMicMuted ? Colors.white54 : Colors.greenAccent,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      isMicMuted = !isMicMuted;
+                    });
+                    _voiceService.toggleMic(!isMicMuted);
+                  },
+                  tooltip: isMicMuted ? "Unmute Mic" : "Mute Mic",
+                );
+              },
             ),
           ],
         ),
@@ -534,7 +571,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
         backgroundColor: AppColors.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Quit Game?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: const Text("Are you sure you want to leave the game? This will count as a forfeit if you don't return quickly."),
+        content: const Text(
+          "Are you sure you want to leave the game? This will count as a forfeit if you don't return quickly.",
+          style: TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

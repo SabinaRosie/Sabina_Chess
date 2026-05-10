@@ -1,235 +1,159 @@
-import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import '../utils/const.dart';
 import 'api_service.dart';
 
 class SignalingService {
-  static WebSocketChannel? _channel;
+  // ── Static members for General Calling & Notifications ──
   static WebSocketChannel? _notificationChannel;
-  static StreamController<dynamic>? _controller;
-  static StreamController<dynamic>? _notificationController;
-  static StreamSubscription? _subscription;
-  static StreamSubscription? _notificationSubscription;
+  static WebSocketChannel? _callChannel;
 
-  // --- API Methods ---
+  // ── Static API Wrappers ──
 
-  static Future<Map<String, dynamic>> createCall(String calleeUsername, String callType) async {
+  static Future<Map<String, dynamic>> _handleResponse(http.Response response) async {
     try {
-      final token = await ApiService.getValidToken();
-      final response = await http.post(
-        Uri.parse('${AppConstants.baseUrl}/call/create'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'callee_username': calleeUsername,
-          'call_type': callType,
-        }),
-      );
-
       final data = jsonDecode(response.body);
-      if (response.statusCode == 200) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         return {'success': true, 'data': data};
       }
-      return {'success': false, 'error': data['error']};
+      return {'success': false, 'error': data['error'] ?? 'Request failed'};
     } catch (e) {
       return {'success': false, 'error': e.toString()};
     }
   }
 
-  static Future<void> answerCall(String roomId, String action) async {
+  static Future<Map<String, String>> _getHeaders() async {
+    final token = await ApiService.getValidToken();
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ${token ?? ""}',
+    };
+  }
+
+  static Future<void> registerFcmToken(String token) async {
     try {
-      final token = await ApiService.getValidToken();
+      final headers = await _getHeaders();
       await http.post(
-        Uri.parse('${AppConstants.baseUrl}/call/answer'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'room_id': roomId,
-          'action': action,
-        }),
-      );
-    } catch (e) {
-      debugPrint("Error answering call: $e");
-    }
-  }
-
-  static Future<void> endCall(String roomId) async {
-    try {
-      final token = await ApiService.getValidToken();
-      await http.post(
-        Uri.parse('${AppConstants.baseUrl}/call/end'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'room_id': roomId}),
-      );
-    } catch (e) {
-      debugPrint("Error ending call API: $e");
-    }
-  }
-
-  static Future<List<Map<String, dynamic>>> getIceServers() async {
-    try {
-      final token = await ApiService.getValidToken();
-      final response = await http.get(
-        Uri.parse('${AppConstants.baseUrl}/call/turn-credentials'),
-        headers: {'Authorization': 'Bearer $token'},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List<dynamic> servers = data['ice_servers'];
-        return servers.cast<Map<String, dynamic>>();
-      }
-    } catch (e) {
-      debugPrint("Error fetching ICE servers: $e");
-    }
-    // Fallback to robust servers if TURN API fails
-    return [
-      {'urls': 'stun:stun.l.google.com:19302'},
-      {'urls': 'stun:stun1.l.google.com:19302'},
-      {'urls': 'stun:stun2.l.google.com:19302'},
-      {'urls': 'stun:stun.cloudflare.com:3478'},
-      {'urls': 'stun:stun.services.mozilla.com'},
-      {'urls': 'stun:stun.voiparound.com:3478'},
-      // These are common open relay ports
-      {'urls': 'stun:openrelay.metered.ca:80'},
-      {'urls': 'stun:openrelay.metered.ca:443'},
-    ];
-  }
-
-  static Future<bool> registerFcmToken(String token, {String? deviceId}) async {
-    try {
-      final authToken = await ApiService.getValidToken();
-      final response = await http.post(
         Uri.parse('${AppConstants.baseUrl}/register-fcm-token'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $authToken',
-        },
-        body: jsonEncode({
-          'token': token,
-          'device_id': deviceId,
-        }),
+        headers: headers,
+        body: jsonEncode({'token': token}),
       );
-      return response.statusCode == 200;
     } catch (e) {
-      debugPrint("Error registering FCM token: $e");
-      return false;
-    }
-  }
-
-  // --- WebSocket Methods ---
-
-  static Future<Stream<dynamic>?> connectWebSocket(String roomId) async {
-    try {
-      await closeWebSocket();
-
-      final token = await ApiService.getValidToken();
-      final wsUrl = AppConstants.baseUrl
-          .replaceFirst('https://', 'wss://')
-          .replaceFirst('http://', 'ws://')
-          .replaceFirst('/api', '/ws/call/$roomId/');
-
-      debugPrint("Connecting to Call WebSocket: $wsUrl");
-
-      _channel = WebSocketChannel.connect(
-        Uri.parse('$wsUrl?token=$token'),
-      );
-
-      _controller = StreamController<dynamic>.broadcast();
-      _subscription = _channel!.stream.listen(
-        (data) => _controller?.add(data),
-        onDone: () => closeWebSocket(),
-        onError: (e) => closeWebSocket(),
-      );
-
-      return _controller!.stream;
-    } catch (e) {
-      debugPrint("WS Connection Error: $e");
-      return null;
-    }
-  }
-
-  static void sendNotificationPing() {
-    if (_channel != null) {
-      _channel!.sink.add(jsonEncode({'type': 'ping_notification'}));
+      debugPrint("FCM Register Error: $e");
     }
   }
 
   static Future<Map<String, dynamic>> checkIncoming() async {
     try {
-      final token = await ApiService.getValidToken();
+      final headers = await _getHeaders();
       final response = await http.get(
         Uri.parse('${AppConstants.baseUrl}/call/check-incoming'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       );
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': jsonDecode(response.body)};
+      return _handleResponse(response);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> createCall(String calleeUsername, String callType) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('${AppConstants.baseUrl}/call/create'),
+        headers: headers,
+        body: jsonEncode({'callee_username': calleeUsername, 'call_type': callType}),
+      );
+      return _handleResponse(response);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> answerCall(String roomId, String action) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('${AppConstants.baseUrl}/call/answer'),
+        headers: headers,
+        body: jsonEncode({'room_id': roomId, 'action': action}),
+      );
+      return _handleResponse(response);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getIceServers() async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('${AppConstants.baseUrl}/call/turn-credentials'),
+        headers: headers,
+      );
+      final res = await _handleResponse(response);
+      if (res['success']) {
+        return List<Map<String, dynamic>>.from(res['data']['ice_servers']);
       }
     } catch (e) {
-      debugPrint("Check Incoming Error: $e");
+      debugPrint("ICE Servers Error: $e");
     }
-    return {'success': false};
+    return [
+      {'urls': 'stun:stun.l.google.com:19302'},
+    ];
   }
 
-  static void sendWsSignal(String type, Map<String, dynamic> data) {
-    if (_channel != null) {
-      _channel!.sink.add(jsonEncode({
-        'type': type,
-        'data': data,
-      }));
-    }
-  }
+  // ── Static WebSocket Handlers ──
 
-  static Future<Stream<dynamic>?> connectNotificationSocket() async {
+  static Future<Stream?> connectNotificationSocket() async {
     try {
       final token = await ApiService.getValidToken();
-      final wsUrl = AppConstants.baseUrl
-          .replaceFirst('https://', 'wss://')
-          .replaceFirst('http://', 'ws://')
-          .replaceFirst('/api', '/ws/notifications/');
+      if (token == null) return null;
 
-      debugPrint("Connecting to Notification WebSocket: $wsUrl");
-
-      _notificationChannel = WebSocketChannel.connect(
-        Uri.parse('$wsUrl?token=$token'),
-      );
-
-      _notificationController = StreamController<dynamic>.broadcast();
-      _notificationSubscription = _notificationChannel!.stream.listen(
-        (data) => _notificationController?.add(data),
-        onDone: () => _notificationChannel = null,
-        onError: (e) => _notificationChannel = null,
-      );
-
-      return _notificationController!.stream;
+      final url = Uri.parse('${AppConstants.webSocketUrl}/notifications/?token=$token');
+      _notificationChannel = WebSocketChannel.connect(url);
+      return _notificationChannel!.stream;
     } catch (e) {
       debugPrint("Notification WS Error: $e");
       return null;
     }
   }
 
-  static Future<void> closeWebSocket() async {
-    await _subscription?.cancel();
-    await _controller?.close();
-    await _channel?.sink.close();
-    await _notificationSubscription?.cancel();
-    await _notificationController?.close();
-    await _notificationChannel?.sink.close();
-    _subscription = null;
-    _controller = null;
-    _channel = null;
-    _notificationSubscription = null;
-    _notificationController = null;
-    _notificationChannel = null;
+  static void sendNotificationPing() {
+    if (_notificationChannel != null) {
+      _notificationChannel!.sink.add(jsonEncode({'type': 'ping'}));
+    }
+  }
+
+  static Future<Stream?> connectWebSocket(String roomId) async {
+    try {
+      final token = await ApiService.getValidToken();
+      if (token == null) return null;
+
+      final url = Uri.parse('${AppConstants.webSocketUrl}/call/$roomId/?token=$token');
+      _callChannel = WebSocketChannel.connect(url);
+      return _callChannel!.stream;
+    } catch (e) {
+      debugPrint("Call WS Error: $e");
+      return null;
+    }
+  }
+
+  static void sendWsSignal(String type, Map<String, dynamic> data) {
+    if (_callChannel != null) {
+      _callChannel!.sink.add(jsonEncode({
+        'type': type,
+        'data': data,
+      }));
+    }
+  }
+
+  static void closeWebSocket() {
+    _callChannel?.sink.close();
+    _callChannel = null;
   }
 }
