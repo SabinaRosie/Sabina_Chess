@@ -48,16 +48,19 @@ class _GameInvitationScreenState extends State<GameInvitationScreen> {
               return;
             }
 
-            // Navigate to LiveGamePage
-            if (mounted) {
-              debugPrint("CHESS_NAV: Accept successful. gameId: $gameId. Navigating to board...");
-              
-              // 🔹 FIX: Set currentGameId immediately to prevent redundant navigation from signals
-              NotificationService().currentGameId = gameId;
+              // Navigate to LiveGamePage
+              if (mounted) {
+                debugPrint("CHESS_NAV: Accept successful. gameId: $gameId. Navigating to board in 500ms...");
+                
+                // 🔹 FIX: Set currentGameId immediately to prevent redundant navigation from signals
+                NotificationService().currentGameId = gameId;
 
-              Navigator.of(context).pushNamedAndRemoveUntil(
-                Routes.liveGameRoute,
-                (route) => route.isFirst, // Keep only the bottom-most route (Home) if needed, or clear all
+                await Future.delayed(const Duration(milliseconds: 500));
+                if (!mounted) return;
+
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  Routes.liveGameRoute,
+                  (route) => route.isFirst, 
                 arguments: {
                   'gameId': gameId,
                   'opponentId': widget.senderId,

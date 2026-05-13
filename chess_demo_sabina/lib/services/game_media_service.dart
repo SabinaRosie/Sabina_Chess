@@ -5,6 +5,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../utils/const.dart';
+import 'signaling_service.dart';
 
 class GameMediaService {
   WebSocketChannel? _channel;
@@ -27,19 +28,9 @@ class GameMediaService {
   String? _gameId;
   String? _token;
 
-  final Map<String, dynamic> _iceConfiguration = {
+  Map<String, dynamic> _iceConfiguration = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
-      {'urls': 'stun:stun1.l.google.com:19302'},
-      {
-        'urls': [
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:3478',
-        ],
-        'username': 'openrelayproject',
-        'credential': 'openrelayproject',
-      },
     ],
     'sdpSemantics': 'unified-plan',
   };
@@ -62,11 +53,19 @@ class GameMediaService {
       onError: (e) => debugPrint("GAME_MEDIA_WS: Error $e"),
     );
 
+    // Fetch dynamic ICE servers for better connectivity
+    try {
+      final servers = await SignalingService.getIceServers();
+      _iceConfiguration['iceServers'] = servers;
+      debugPrint("GAME_MEDIA_WEBRTC: Fetched ${servers.length} ICE servers");
+    } catch (e) {
+      debugPrint("GAME_MEDIA_WARNING: Could not fetch ICE servers, using defaults: $e");
+    }
+
     await _initPeerConnection();
     
-    if (_isCaller) {
-      await _createOffer();
-    }
+    // 🔹 HANDSHAKE: Signal that we are connected and ready
+    _sendSignal('peer_ready', {'isCaller': _isCaller});
   }
 
   Future<void> _initPeerConnection() async {
@@ -82,16 +81,27 @@ class GameMediaService {
       }
     };
 
-    _peerConnection!.onAddStream = (stream) {
-      debugPrint("GAME_MEDIA_WEBRTC: Remote stream added: ${stream.id}");
-      _remoteStream = stream;
-      remoteStreamNotifier.value = stream;
+    _peerConnection!.onIceConnectionState = (state) {
+      debugPrint("GAME_MEDIA_WEBRTC: ICE Connection State: ${state.name}");
+      if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
+        debugPrint("GAME_MEDIA_WEBRTC: ICE Connection Failed. Restarting ICE...");
+        _peerConnection!.restartIce();
+      }
+    };
+
+    _peerConnection!.onConnectionState = (state) {
+      debugPrint("GAME_MEDIA_WEBRTC: Peer Connection State: ${state.name}");
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        debugPrint("GAME_MEDIA_WEBRTC: Connection Failed. Requesting renegotiation...");
+        _sendSignal('renegotiate_request', {});
+      }
     };
 
     _peerConnection!.onTrack = (event) {
       debugPrint("GAME_MEDIA_WEBRTC: onTrack: ${event.track.kind}");
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams[0];
+        remoteStreamNotifier.value = null;
         remoteStreamNotifier.value = _remoteStream;
       }
     };
@@ -103,7 +113,7 @@ class GameMediaService {
     var micStatus = await Permission.microphone.request();
     var camStatus = await Permission.camera.request();
     
-    if (!micStatus.isGranted) return;
+    debugPrint("GAME_MEDIA_PERMISSIONS: Mic: $micStatus, Cam: $camStatus");
 
     final constraints = {
       'audio': {
@@ -112,50 +122,81 @@ class GameMediaService {
         'autoGainControl': true,
       },
       'video': {
-        'mandatory': {
-          'minWidth': '640',
-          'minHeight': '480',
-          'minFrameRate': '30',
-        },
+        'width': {'ideal': 640},
+        'height': {'ideal': 480},
         'facingMode': 'user',
-        'optional': [],
       },
     };
 
-    _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    localStreamNotifier.value = _localStream;
-    
-    // Default: BOTH Audio and Video Muted initially for privacy
-    for (var track in _localStream!.getAudioTracks()) {
-      track.enabled = false;
-    }
-    for (var track in _localStream!.getVideoTracks()) {
-      track.enabled = false;
-    }
+    try {
+      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      debugPrint("GAME_MEDIA_WEBRTC: Local stream acquired: ${_localStream?.id}");
+      
+      // Default: BOTH Audio and Video Muted initially for privacy
+      for (var track in _localStream!.getAudioTracks()) {
+        track.enabled = false;
+      }
+      for (var track in _localStream!.getVideoTracks()) {
+        track.enabled = false;
+      }
 
-    _localStream!.getTracks().forEach((track) {
-      _peerConnection!.addTrack(track, _localStream!);
-    });
+      localStreamNotifier.value = _localStream;
+
+      if (_peerConnection != null) {
+        _localStream!.getTracks().forEach((track) {
+          _peerConnection!.addTrack(track, _localStream!);
+          debugPrint("GAME_MEDIA_WEBRTC: Added track to PeerConnection: ${track.kind}");
+        });
+      }
+    } catch (e) {
+      debugPrint("GAME_MEDIA_ERROR: Could not get user media: $e");
+    }
   }
 
   void toggleMic(bool enabled) {
     if (_localStream != null) {
       for (var track in _localStream!.getAudioTracks()) {
         track.enabled = enabled;
+        debugPrint("GAME_MEDIA_WEBRTC: Audio track enabled: $enabled");
+      }
+      if (enabled) {
+        Helper.setSpeakerphoneOn(true);
       }
       _sendSignal('toggle_mute', {'isMuted': !enabled});
     }
   }
 
-  void toggleVideo(bool enabled) {
+  Future<void> toggleVideo(bool enabled) async {
     if (_localStream != null) {
       for (var track in _localStream!.getVideoTracks()) {
         track.enabled = enabled;
+        debugPrint("GAME_MEDIA_WEBRTC: Video track enabled: $enabled");
       }
+      
       _sendSignal('toggle_video', {'isVideoEnabled': enabled});
+      
+      debugPrint("GAME_MEDIA_WEBRTC: toggleVideo($enabled), isCaller: $_isCaller");
+      
+      // Renegotiate to ensure peer sees the track state change
+      if (enabled) {
+        // Wait slightly for track to be fully active
+        await Future.delayed(const Duration(milliseconds: 300));
+        
+        if (_isCaller) {
+          debugPrint("GAME_MEDIA_WEBRTC: Renegotiating as caller...");
+          await _createOffer();
+        } else {
+          debugPrint("GAME_MEDIA_WEBRTC: Requesting renegotiation as receiver...");
+          _sendSignal('renegotiate_request', {});
+        }
+      }
+
       // Force update of local notifier
       localStreamNotifier.value = null;
       localStreamNotifier.value = _localStream;
+    } else {
+      debugPrint("GAME_MEDIA_WARNING: Cannot toggle video, local stream is null. Attempting setup...");
+      await _setupLocalStream();
     }
   }
 
@@ -168,9 +209,20 @@ class GameMediaService {
   }
 
   Future<void> _createOffer() async {
-    RTCSessionDescription offer = await _peerConnection!.createOffer();
-    await _peerConnection!.setLocalDescription(offer);
-    _sendSignal('offer', offer.sdp);
+    try {
+      final constraints = {
+        'mandatory': {
+          'OfferToReceiveAudio': true,
+          'OfferToReceiveVideo': true,
+        },
+      };
+      RTCSessionDescription offer = await _peerConnection!.createOffer(constraints);
+      await _peerConnection!.setLocalDescription(offer);
+      _sendSignal('offer', offer.sdp);
+      debugPrint("GAME_MEDIA_WEBRTC: Offer created and sent");
+    } catch (e) {
+      debugPrint("GAME_MEDIA_ERROR: Could not create offer: $e");
+    }
   }
 
   void _handleMessage(Map<String, dynamic> data) async {
@@ -179,8 +231,15 @@ class GameMediaService {
 
     switch (type) {
       case 'offer':
+        debugPrint("GAME_MEDIA_WEBRTC: Received offer, creating answer...");
         await _peerConnection!.setRemoteDescription(RTCSessionDescription(payload, 'offer'));
-        RTCSessionDescription answer = await _peerConnection!.createAnswer();
+        final constraints = {
+          'mandatory': {
+            'OfferToReceiveAudio': true,
+            'OfferToReceiveVideo': true,
+          },
+        };
+        RTCSessionDescription answer = await _peerConnection!.createAnswer(constraints);
         await _peerConnection!.setLocalDescription(answer);
         _sendSignal('answer', answer.sdp);
         break;
@@ -212,6 +271,25 @@ class GameMediaService {
       case 'video_response':
         _videoResponseController.add(payload['accepted'] ?? false);
         break;
+
+      case 'renegotiate_request':
+        if (_isCaller) {
+          debugPrint("GAME_MEDIA_WEBRTC: Received renegotiate request. Creating new offer...");
+          await _createOffer();
+        }
+        break;
+
+      case 'peer_ready':
+        debugPrint("GAME_MEDIA_WEBRTC: Peer is ready. IsCaller: ${payload['isCaller']}");
+        // If we are the caller and the peer just became ready, send the initial offer
+        if (_isCaller) {
+          debugPrint("GAME_MEDIA_WEBRTC: Starting initial negotiation...");
+          await _createOffer();
+        } else {
+          // If we are not caller, just confirm we are ready too
+          _sendSignal('peer_ready', {'isCaller': _isCaller});
+        }
+        break;
     }
   }
 
@@ -230,5 +308,7 @@ class GameMediaService {
     _peerConnection?.dispose();
     _channel?.sink.close();
     _videoRequestController.close();
+    _videoResponseController.close();
+    debugPrint("GAME_MEDIA_WEBRTC: Disposed");
   }
 }

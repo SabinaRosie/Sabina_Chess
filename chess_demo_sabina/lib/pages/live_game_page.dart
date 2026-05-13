@@ -61,6 +61,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
     super.initState();
     NotificationService().currentGameId = widget.gameId;
     board = Board();
+    
+    // 🎙️ Initialize Renderers
+    _initializeRenderers();
+    
     _connectWebSocket();
 
     // 🔹 Hide Game Start overlay after 1.5 seconds
@@ -69,6 +73,26 @@ class _LiveGamePageState extends State<LiveGamePage> {
         setState(() => showGameStartOverlay = false);
       }
     });
+  }
+
+  Future<void> _initializeRenderers() async {
+    try {
+      await _localRenderer.initialize();
+      await _remoteRenderer.initialize();
+      debugPrint("GAME_MEDIA_UI: Renderers initialized successfully");
+      
+      if (_mediaService.localStreamNotifier.value != null) {
+        debugPrint("GAME_MEDIA_UI: Setting initial local stream: ${_mediaService.localStreamNotifier.value?.id}");
+        _localRenderer.srcObject = _mediaService.localStreamNotifier.value;
+      }
+      if (_mediaService.remoteStreamNotifier.value != null) {
+        debugPrint("GAME_MEDIA_UI: Setting initial remote stream: ${_mediaService.remoteStreamNotifier.value?.id}");
+        _remoteRenderer.srcObject = _mediaService.remoteStreamNotifier.value;
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint("GAME_MEDIA_ERROR: Renderer initialization failed: $e");
+    }
   }
 
   void _connectWebSocket() async {
@@ -84,15 +108,15 @@ class _LiveGamePageState extends State<LiveGamePage> {
     _channel = WebSocketChannel.connect(url);
     
     // 🎙️ Initialize Media Signaling
-    bool isCaller = widget.userColor == 'white';
-    _mediaService.connect(widget.gameId, token, isCaller);
-
+    // Attach listeners BEFORE connecting to avoid race conditions
     _mediaService.localStreamNotifier.addListener(() {
+      debugPrint("GAME_MEDIA_UI: Local stream updated: ${_mediaService.localStreamNotifier.value?.id}");
       _localRenderer.srcObject = _mediaService.localStreamNotifier.value;
       if (mounted) setState(() {});
     });
 
     _mediaService.remoteStreamNotifier.addListener(() {
+      debugPrint("GAME_MEDIA_UI: Remote stream updated: ${_mediaService.remoteStreamNotifier.value?.id}");
       _remoteRenderer.srcObject = _mediaService.remoteStreamNotifier.value;
       if (mounted) setState(() {});
     });
@@ -101,7 +125,11 @@ class _LiveGamePageState extends State<LiveGamePage> {
       _showVideoRequestDialog();
     });
 
+    bool isCaller = widget.userColor == 'white';
+    _mediaService.connect(widget.gameId, token, isCaller);
+
     _videoResponseSub = _mediaService.onVideoResponse.listen((accepted) {
+      debugPrint("GAME_MEDIA_UI: Received video response: $accepted");
       if (accepted) {
         setState(() => isVideoEnabled = true);
         _mediaService.toggleVideo(true);
@@ -422,9 +450,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
   @override
   void dispose() {
-    if (NotificationService().currentGameId == widget.gameId) {
-      NotificationService().currentGameId = null;
-    }
+    NotificationService().currentGameId = null;
     _opponentGraceTimer?.cancel();
     _heartbeatTimer?.cancel();
     _channel?.sink.close();
@@ -480,7 +506,22 @@ class _LiveGamePageState extends State<LiveGamePage> {
               onPressed: _offerDraw,
               tooltip: "Offer Draw",
             ),
-            _buildMediaControls(),
+            if (!isVideoEnabled) ...[
+              IconButton(
+                icon: Icon(
+                  isMicMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                  color: isMicMuted ? Colors.white54 : Colors.greenAccent,
+                ),
+                onPressed: () {
+                  setState(() => isMicMuted = !isMicMuted);
+                  _mediaService.toggleMic(!isMicMuted);
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.videocam_rounded, color: Colors.white54),
+                onPressed: _handleVideoToggle,
+              ),
+            ],
             const SizedBox(width: 8),
           ],
         ),
@@ -525,6 +566,9 @@ class _LiveGamePageState extends State<LiveGamePage> {
         
                     const Spacer(),
                     
+                    // 🎥 Video Call Row
+                    _buildVideoRow(),
+
                     // ── The Board ──
                     _buildBoard(),
         
@@ -538,10 +582,6 @@ class _LiveGamePageState extends State<LiveGamePage> {
                 ),
               if (showGameStartOverlay)
                 _buildGameStartOverlay(),
-              
-              // 🎥 Video Call Overlays
-              if (isVideoEnabled || _mediaService.isOpponentVideoEnabled.value)
-                _buildVideoOverlays(),
             ],
           ),
         ),
@@ -549,77 +589,147 @@ class _LiveGamePageState extends State<LiveGamePage> {
     );
   }
 
-  Widget _buildMediaControls() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: Icon(
-            isMicMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-            color: isMicMuted ? Colors.white54 : Colors.greenAccent,
-          ),
-          onPressed: () {
-            setState(() => isMicMuted = !isMicMuted);
-            _mediaService.toggleMic(!isMicMuted);
-          },
-          tooltip: isMicMuted ? "Unmute Mic" : "Mute Mic",
+  Widget _buildCompactControl({required IconData icon, required bool isActive, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: isActive ? Colors.black54 : Colors.redAccent.withOpacity(0.7),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white24, width: 1),
         ),
-        IconButton(
-          icon: Icon(
-            isVideoEnabled ? Icons.videocam_rounded : Icons.videocam_off_rounded,
-            color: isVideoEnabled ? Colors.greenAccent : Colors.white54,
-          ),
-          onPressed: _handleVideoToggle,
-          tooltip: isVideoEnabled ? "Disable Video" : "Request Video Call",
-        ),
-      ],
+        child: Icon(icon, color: Colors.white, size: 18),
+      ),
     );
   }
 
-  Widget _buildVideoOverlays() {
-    return Positioned(
-      top: 100,
-      right: 16,
-      child: Column(
-        children: [
-          // Remote Video
-          ValueListenableBuilder<bool>(
-            valueListenable: _mediaService.isOpponentVideoEnabled,
-            builder: (context, enabled, _) {
-              if (!enabled) return const SizedBox.shrink();
-              return Container(
-                width: 120,
-                height: 160,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.secondaryColor, width: 2),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: RTCVideoView(_remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
-                ),
-              );
-            },
-          ),
-          // Local Video
-          if (isVideoEnabled)
-            Container(
-              width: 120,
-              height: 160,
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white24, width: 2),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
-              ),
-            ),
-        ],
+  Widget _buildVideoBox({required RTCVideoRenderer renderer, required bool isEnabled, required bool isLocal}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black45,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isLocal 
+            ? (isEnabled ? Colors.greenAccent.withOpacity(0.5) : Colors.white10) 
+            : (isEnabled ? AppColors.secondaryColor.withOpacity(0.5) : Colors.white10),
+          width: 2,
+        ),
       ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Stack(
+          children: [
+            // Video View or Placeholder
+            if (isEnabled && renderer.srcObject != null)
+              RTCVideoView(
+                renderer,
+                key: ValueKey('${isLocal ? 'local' : 'remote'}_${renderer.srcObject?.id}'),
+                mirror: isLocal,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+              )
+            else
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isLocal ? Icons.person_rounded : Icons.account_circle_rounded, 
+                      color: Colors.white12, 
+                      size: 48
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isEnabled ? "Connecting..." : (isLocal ? "Your Video Off" : "Opponent Video Off"),
+                      style: const TextStyle(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            
+            // Icons Overlay (On both for status, controls only on local)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: isLocal 
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildCompactControl(
+                        icon: isMicMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                        isActive: !isMicMuted,
+                        onTap: () {
+                          setState(() => isMicMuted = !isMicMuted);
+                          _mediaService.toggleMic(!isMicMuted);
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _buildCompactControl(
+                        icon: isVideoEnabled ? Icons.videocam_off_rounded : Icons.videocam_rounded,
+                        isActive: false,
+                        onTap: _handleVideoToggle,
+                      ),
+                    ],
+                  )
+                : (isEnabled 
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.live_tv_rounded, color: Colors.redAccent, size: 12),
+                            const SizedBox(width: 4),
+                            Text(widget.opponentUsername, style: const TextStyle(color: Colors.white, fontSize: 10)),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideoRow() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: _mediaService.isOpponentVideoEnabled,
+      builder: (context, opponentVideoEnabled, _) {
+        if (!isVideoEnabled && !opponentVideoEnabled) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: SizedBox(
+            height: 140, 
+            child: Row(
+              children: [
+                if (opponentVideoEnabled)
+                  Expanded(
+                    child: _buildVideoBox(
+                      renderer: _remoteRenderer,
+                      isEnabled: opponentVideoEnabled,
+                      isLocal: false,
+                    ),
+                  ),
+                if (opponentVideoEnabled && isVideoEnabled)
+                  const SizedBox(width: 12),
+                if (isVideoEnabled)
+                  Expanded(
+                    child: _buildVideoBox(
+                      renderer: _localRenderer,
+                      isEnabled: isVideoEnabled,
+                      isLocal: true,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -128,6 +128,15 @@ class NotificationService with WidgetsBindingObserver {
     );
     
     // Create the high importance channel
+    const AndroidNotificationChannel highImportanceChannel = AndroidNotificationChannel(
+      'high_importance_channel',
+      'High Importance Notifications',
+      description: 'This channel is used for important notifications.',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+    );
+
     const AndroidNotificationChannel normalChannel = AndroidNotificationChannel(
       'normal_channel',
       'General Notifications',
@@ -136,8 +145,11 @@ class NotificationService with WidgetsBindingObserver {
       playSound: true,
     );
 
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
     if (androidImplementation != null) {
-      await androidImplementation.createNotificationChannel(channel);
+      await androidImplementation.createNotificationChannel(highImportanceChannel);
       await androidImplementation.createNotificationChannel(normalChannel);
     }
 
@@ -177,7 +189,7 @@ class NotificationService with WidgetsBindingObserver {
       ],
     );
 
-    const NotificationDetails platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
 
     await _localNotifications.show(
       notification?.hashCode ?? DateTime.now().millisecond,
