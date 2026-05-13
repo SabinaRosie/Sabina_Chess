@@ -6,8 +6,10 @@ import 'users_list_page.dart';
 import 'conversations_page.dart';
 import '../utils/color_utils.dart';
 import '../services/chat_service.dart';
+import '../services/foreground_service.dart';
 
 class HomePage extends StatefulWidget {
+
   const HomePage({super.key});
 
   @override
@@ -32,6 +34,9 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _updateUnreadCount();
     _badgeTimer = Timer.periodic(const Duration(seconds: 10), (_) => _updateUnreadCount());
+
+    // 🔹 Start Sticky Notification Service
+    ChessForegroundService.startService();
   }
 
   Future<void> _updateUnreadCount() async {
