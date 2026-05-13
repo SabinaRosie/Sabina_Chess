@@ -31,7 +31,19 @@ class GameMediaService {
   Map<String, dynamic> _iceConfiguration = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
+      {'urls': 'stun:stun1.l.google.com:19302'},
+      {'urls': 'stun:stun2.l.google.com:19302'},
+      {
+        'urls': [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+        ],
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
     ],
+    'iceCandidatePoolSize': 20,
     'sdpSemantics': 'unified-plan',
   };
 
@@ -53,11 +65,16 @@ class GameMediaService {
       onError: (e) => debugPrint("GAME_MEDIA_WS: Error $e"),
     );
 
-    // Fetch dynamic ICE servers for better connectivity
+    // Fetch dynamic ICE servers and MERGE with our hardened defaults
     try {
       final servers = await SignalingService.getIceServers();
-      _iceConfiguration['iceServers'] = servers;
-      debugPrint("GAME_MEDIA_WEBRTC: Fetched ${servers.length} ICE servers");
+      if (servers.isNotEmpty) {
+        // We keep our hardened defaults (TCP/TLS) and ADD the backend's servers
+        final List<dynamic> currentServers = List.from(_iceConfiguration['iceServers'] ?? []);
+        currentServers.addAll(servers);
+        _iceConfiguration['iceServers'] = currentServers;
+        debugPrint("GAME_MEDIA_WEBRTC: Merged backend servers. Total: ${currentServers.length}");
+      }
     } catch (e) {
       debugPrint("GAME_MEDIA_WARNING: Could not fetch ICE servers, using defaults: $e");
     }

@@ -31,7 +31,10 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _updateUnreadCount();
-    _badgeTimer = Timer.periodic(const Duration(seconds: 10), (_) => _updateUnreadCount());
+    _badgeTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _updateUnreadCount(),
+    );
   }
 
   Future<void> _updateUnreadCount() async {
@@ -59,7 +62,8 @@ class _HomePageState extends State<HomePage> {
       ),
       child: Scaffold(
         backgroundColor: Colors.transparent, // Allow container gradient to show
-        extendBody: true, // ── 🔹 Fix: Allow body to flow under navigation bar ──
+        extendBody:
+            true, // ── 🔹 Fix: Allow body to flow under navigation bar ──
         body: IndexedStack(index: _currentIndex, children: _pages),
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
@@ -79,14 +83,22 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
             // ── 🔹 Fix: Remove potential default borders ──
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05), width: 0.5)),
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withOpacity(0.05),
+                width: 0.5,
+              ),
+            ),
           ),
           child: BottomNavigationBar(
             currentIndex: _currentIndex,
             backgroundColor: Colors.transparent, // Uses container's gradient
             selectedItemColor: AppColors.secondaryColor,
             unselectedItemColor: Colors.white.withOpacity(0.4),
-            selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            selectedLabelStyle: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
             unselectedLabelStyle: const TextStyle(fontSize: 11),
             type: BottomNavigationBarType.fixed,
             elevation: 0,
@@ -95,8 +107,14 @@ class _HomePageState extends State<HomePage> {
               _updateUnreadCount();
             },
             items: [
-              const BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-              const BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Community'),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.home_rounded),
+                label: 'Home',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.people_rounded),
+                label: 'Community',
+              ),
               BottomNavigationBarItem(
                 icon: Stack(
                   children: [
@@ -107,11 +125,21 @@ class _HomePageState extends State<HomePage> {
                         top: 0,
                         child: Container(
                           padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
-                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
                           child: Text(
                             _totalUnread > 9 ? '9+' : '$_totalUnread',
-                            style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -120,7 +148,10 @@ class _HomePageState extends State<HomePage> {
                 ),
                 label: 'Messages',
               ),
-              const BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Profile'),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.person_rounded),
+                label: 'Profile',
+              ),
             ],
           ),
         ),

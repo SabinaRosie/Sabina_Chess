@@ -17,14 +17,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
     // 🔹 Initialize Firebase
     await Firebase.initializeApp();
-    
+
     // 🔹 Set up background message handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    
+
     // 🔹 Initialize our local notification service
     NotificationService().init();
   } catch (e) {
