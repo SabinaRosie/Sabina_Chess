@@ -1,6 +1,7 @@
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:intl/intl.dart';
+
 
 
 @pragma('vm:entry-point')
@@ -10,7 +11,7 @@ void foregroundStartCallback() {
 
 class ChessTaskHandler extends TaskHandler {
   int _currentTipIndex = 0;
-  int _secondsPassed = 0;
+  double _secondsPassed = 0.0;
 
   static final List<String> _chessTips = [
     "Control the center of the board 🎯",
@@ -25,6 +26,11 @@ class ChessTaskHandler extends TaskHandler {
     "Always check for checks! ✓",
   ];
 
+  static String _getCurrentTime() {
+    final now = DateTime.now();
+    return DateFormat('h:mm a').format(now);
+  }
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     debugPrint("ChessTaskHandler: Started");
@@ -32,17 +38,19 @@ class ChessTaskHandler extends TaskHandler {
   }
 
   void _updateNotification() {
+    final String currentTime = _getCurrentTime();
     final String currentTip = _chessTips[_currentTipIndex];
     
     FlutterForegroundTask.updateService(
-      notificationTitle: 'Sabina Chess • Daily Tips',
+      notificationTitle: '🕐 $currentTime • Sabina Chess',
       notificationText: currentTip,
     );
   }
 
+
   @override
   void onRepeatEvent(DateTime timestamp) {
-    _secondsPassed += 1;
+    _secondsPassed += 0.1; // Updated for 100ms interval
     
     // Rotate tip every 2 minutes (120 seconds)
     if (_secondsPassed >= 120) {
@@ -50,10 +58,9 @@ class ChessTaskHandler extends TaskHandler {
       _secondsPassed = 0;
     }
 
-    // Refresh notification every 1 second to ensure it stays visible
+    // Refresh notification every 100ms for instant reappearance
     _updateNotification();
   }
-
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
@@ -86,7 +93,7 @@ class ChessForegroundService {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(1000), // Refresh every 1 second
+        eventAction: ForegroundTaskEventAction.repeat(100), // Refresh every 100ms
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: true,
