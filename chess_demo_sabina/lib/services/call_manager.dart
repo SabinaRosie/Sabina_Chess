@@ -84,9 +84,9 @@ class CallManager {
       final servers = await SignalingService.getIceServers();
       final iceConfig = {
         'iceServers': servers,
-        'iceCandidatePoolSize': 10,
+        'iceCandidatePoolSize': 20, // Increased for faster candidate gathering
         'sdpSemantics': 'unified-plan',
-        'iceTransportPolicy': 'all',
+        'iceTransportPolicy': 'all', // Ensure all types (relay/srflx/host) are allowed
       };
 
       peerConnection = await createPeerConnection(iceConfig);
@@ -97,6 +97,7 @@ class CallManager {
 
       peerConnection!.onTrack = (RTCTrackEvent event) {
         if (event.streams.isNotEmpty) {
+          debugPrint("🚞 WebRTC: Remote Track received (${event.track.kind})");
           remoteRenderer.srcObject = event.streams[0];
           if (event.track.kind == 'video') {
             remoteVideoEnabled = true;
@@ -108,6 +109,13 @@ class CallManager {
 
       peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
         if (candidate.candidate != null) {
+          // Log candidate type for debugging cross-network issues
+          String type = "unknown";
+          if (candidate.candidate!.contains("typ host")) type = "HOST (Local)";
+          if (candidate.candidate!.contains("typ srflx")) type = "SRFLX (Public IP)";
+          if (candidate.candidate!.contains("typ relay")) type = "RELAY (TURN Server)";
+          debugPrint("🧊 WebRTC: Local ICE Candidate found: $type");
+
           SignalingService.sendWsSignal('candidate', {
             'room_id': roomId,
             'candidate': candidate.candidate,
@@ -117,18 +125,20 @@ class CallManager {
         }
       };
 
+      peerConnection!.onIceConnectionState = (RTCIceConnectionState state) {
+        debugPrint("🧊 WebRTC: ICE Connection State: ${state.name}");
+      };
+
       peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
-        debugPrint("WebRTC Connection State: ${state.name}");
+        debugPrint("📡 WebRTC: Connection State: ${state.name}");
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected && !isConnected) {
           _onUserJoined();
         }
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-          debugPrint("WebRTC Connection Failed - Attempting recovery...");
-          // Potential ICE restart logic could go here if needed
+          debugPrint("❌ WebRTC: Connection Failed - Likely network restriction or TURN failure.");
         }
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed || 
             state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-          // Instead of immediate endCall, we give it a moment to reconnect
           if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
             endCall();
           }
