@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'utils/route_const.dart';
 import 'utils/route_generator.dart';
 import 'services/notification_service.dart';
+import 'services/foreground_service.dart';
 
 // 🔹 Top-level background message handler
 @pragma('vm:entry-point')
@@ -17,8 +18,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 🔹 Initialize Foreground Service (Sticky Notification)
+  await ChessForegroundService.initService();
 
   try {
+
     // 🔹 Initialize Firebase
     await Firebase.initializeApp();
 

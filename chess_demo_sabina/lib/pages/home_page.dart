@@ -5,9 +5,12 @@ import 'profile_page.dart';
 import 'users_list_page.dart';
 import 'conversations_page.dart';
 import '../utils/color_utils.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import '../services/chat_service.dart';
+import '../services/foreground_service.dart';
 
 class HomePage extends StatefulWidget {
+
   const HomePage({super.key});
 
   @override
@@ -31,10 +34,10 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _updateUnreadCount();
-    _badgeTimer = Timer.periodic(
-      const Duration(seconds: 10),
-      (_) => _updateUnreadCount(),
-    );
+    _badgeTimer = Timer.periodic(const Duration(seconds: 10), (_) => _updateUnreadCount());
+
+    // 🔹 Start Sticky Notification Service
+    ChessForegroundService.startService();
   }
 
   Future<void> _updateUnreadCount() async {
@@ -52,107 +55,109 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: AppColors.woodGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Scaffold(
-        backgroundColor: Colors.transparent, // Allow container gradient to show
-        extendBody:
-            true, // ── 🔹 Fix: Allow body to flow under navigation bar ──
-        body: IndexedStack(index: _currentIndex, children: _pages),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [
-                Color(0xFF1A0F0A), // Darker wood shade for bottom
-                Color(0xFF0F0805),
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.5),
-                blurRadius: 15,
-                offset: const Offset(0, -2),
-              ),
-            ],
-            // ── 🔹 Fix: Remove potential default borders ──
-            border: Border(
-              top: BorderSide(
-                color: Colors.white.withOpacity(0.05),
-                width: 0.5,
-              ),
-            ),
+    return WithForegroundTask(
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: AppColors.woodGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            backgroundColor: Colors.transparent, // Uses container's gradient
-            selectedItemColor: AppColors.secondaryColor,
-            unselectedItemColor: Colors.white.withOpacity(0.4),
-            selectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
+        ),
+        child: Scaffold(
+          backgroundColor: Colors.transparent, // Allow container gradient to show
+          extendBody:
+              true, // ── 🔹 Fix: Allow body to flow under navigation bar ──
+          body: IndexedStack(index: _currentIndex, children: _pages),
+          bottomNavigationBar: Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFF1A0F0A), // Darker wood shade for bottom
+                  Color(0xFF0F0805),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 15,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+              // ── 🔹 Fix: Remove potential default borders ──
+              border: Border(
+                top: BorderSide(
+                  color: Colors.white.withOpacity(0.05),
+                  width: 0.5,
+                ),
+              ),
             ),
-            unselectedLabelStyle: const TextStyle(fontSize: 11),
-            type: BottomNavigationBarType.fixed,
-            elevation: 0,
-            onTap: (index) {
-              setState(() => _currentIndex = index);
-              _updateUnreadCount();
-            },
-            items: [
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.home_rounded),
-                label: 'Home',
+            child: BottomNavigationBar(
+              currentIndex: _currentIndex,
+              backgroundColor: Colors.transparent, // Uses container's gradient
+              selectedItemColor: AppColors.secondaryColor,
+              unselectedItemColor: Colors.white.withOpacity(0.4),
+              selectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
               ),
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.people_rounded),
-                label: 'Community',
-              ),
-              BottomNavigationBarItem(
-                icon: Stack(
-                  children: [
-                    const Icon(Icons.chat_bubble_rounded),
-                    if (_totalUnread > 0)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 16,
-                            minHeight: 16,
-                          ),
-                          child: Text(
-                            _totalUnread > 9 ? '9+' : '$_totalUnread',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
+              unselectedLabelStyle: const TextStyle(fontSize: 11),
+              type: BottomNavigationBarType.fixed,
+              elevation: 0,
+              onTap: (index) {
+                setState(() => _currentIndex = index);
+                _updateUnreadCount();
+              },
+              items: [
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.home_rounded),
+                  label: 'Home',
+                ),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.people_rounded),
+                  label: 'Community',
+                ),
+                BottomNavigationBarItem(
+                  icon: Stack(
+                    children: [
+                      const Icon(Icons.chat_bubble_rounded),
+                      if (_totalUnread > 0)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            textAlign: TextAlign.center,
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              _totalUnread > 9 ? '9+' : '$_totalUnread',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
+                  label: 'Messages',
                 ),
-                label: 'Messages',
-              ),
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.person_rounded),
-                label: 'Profile',
-              ),
-            ],
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.person_rounded),
+                  label: 'Profile',
+                ),
+              ],
+            ),
           ),
         ),
       ),
