@@ -82,11 +82,13 @@ class CallManager {
       }
 
       final servers = await SignalingService.getIceServers();
+      debugPrint("WebRTC: Initializing with ${servers.length} ICE servers");
+
       final iceConfig = {
         'iceServers': servers,
-        'iceCandidatePoolSize': 20, // Increased for faster candidate gathering
+        'iceCandidatePoolSize': 20,
         'sdpSemantics': 'unified-plan',
-        'iceTransportPolicy': 'all', // Ensure all types (relay/srflx/host) are allowed
+        'iceTransportPolicy': 'all',
       };
 
       peerConnection = await createPeerConnection(iceConfig);
@@ -97,7 +99,6 @@ class CallManager {
 
       peerConnection!.onTrack = (RTCTrackEvent event) {
         if (event.streams.isNotEmpty) {
-          debugPrint("🚞 WebRTC: Remote Track received (${event.track.kind})");
           remoteRenderer.srcObject = event.streams[0];
           if (event.track.kind == 'video') {
             remoteVideoEnabled = true;
@@ -109,12 +110,14 @@ class CallManager {
 
       peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
         if (candidate.candidate != null) {
-          // Log candidate type for debugging cross-network issues
-          String type = "unknown";
-          if (candidate.candidate!.contains("typ host")) type = "HOST (Local)";
-          if (candidate.candidate!.contains("typ srflx")) type = "SRFLX (Public IP)";
-          if (candidate.candidate!.contains("typ relay")) type = "RELAY (TURN Server)";
-          debugPrint("🧊 WebRTC: Local ICE Candidate found: $type");
+          // 🔹 Log the candidate type for debugging cross-network issues
+          if (candidate.candidate!.contains('typ relay')) {
+            debugPrint("WebRTC ICE: Found RELAY candidate (TURN working! ✅)");
+          } else if (candidate.candidate!.contains('typ srflx')) {
+            debugPrint("WebRTC ICE: Found SRFLX candidate (STUN working!)");
+          } else if (candidate.candidate!.contains('typ host')) {
+            debugPrint("WebRTC ICE: Found HOST candidate (Local network)");
+          }
 
           SignalingService.sendWsSignal('candidate', {
             'room_id': roomId,
