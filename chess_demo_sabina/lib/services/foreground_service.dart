@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:intl/intl.dart';
+
 
 @pragma('vm:entry-point')
 void foregroundStartCallback() {
@@ -10,6 +10,7 @@ void foregroundStartCallback() {
 
 class ChessTaskHandler extends TaskHandler {
   int _currentTipIndex = 0;
+  int _secondsPassed = 0;
 
   static final List<String> _chessTips = [
     "Control the center of the board 🎯",
@@ -24,11 +25,6 @@ class ChessTaskHandler extends TaskHandler {
     "Always check for checks! ✓",
   ];
 
-  static String _getCurrentTime() {
-    final now = DateTime.now();
-    return DateFormat('h:mm a').format(now);
-  }
-
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     debugPrint("ChessTaskHandler: Started");
@@ -36,20 +32,28 @@ class ChessTaskHandler extends TaskHandler {
   }
 
   void _updateNotification() {
-    final String currentTime = _getCurrentTime();
     final String currentTip = _chessTips[_currentTipIndex];
     
     FlutterForegroundTask.updateService(
-      notificationTitle: '🕐 $currentTime • Chess Daily',
+      notificationTitle: 'Sabina Chess • Daily Tips',
       notificationText: currentTip,
     );
   }
 
   @override
   void onRepeatEvent(DateTime timestamp) {
-    _currentTipIndex = (_currentTipIndex + 1) % _chessTips.length;
+    _secondsPassed += 1;
+    
+    // Rotate tip every 2 minutes (120 seconds)
+    if (_secondsPassed >= 120) {
+      _currentTipIndex = (_currentTipIndex + 1) % _chessTips.length;
+      _secondsPassed = 0;
+    }
+
+    // Refresh notification every 1 second to ensure it stays visible
     _updateNotification();
   }
+
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
@@ -72,16 +76,17 @@ class ChessForegroundService {
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'chess_foreground_service',
         channelName: 'Chess App Service',
-        channelImportance: NotificationChannelImportance.LOW,
-        priority: NotificationPriority.LOW,
+        channelImportance: NotificationChannelImportance.MAX,
+        priority: NotificationPriority.MAX,
         enableVibration: false,
+        visibility: NotificationVisibility.VISIBILITY_PUBLIC,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(120000), // 2 minutes
+        eventAction: ForegroundTaskEventAction.repeat(1000), // Refresh every 1 second
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: true,
