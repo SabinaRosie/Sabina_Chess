@@ -44,7 +44,7 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> login(
-    String username,
+    String email,
     String password,
   ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/login');
@@ -53,7 +53,7 @@ class ApiService {
           .post(
             url,
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'username': username, 'password': password}),
+            body: jsonEncode({'email': email, 'password': password}),
           )
           .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Login failed');
@@ -191,6 +191,75 @@ class ApiService {
       return {'success': response.statusCode == 200};
     } catch (e) {
       return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getUserProfile() async {
+    final token = await getValidToken();
+    if (token == null) return {'success': false, 'error': 'No access token'};
+
+    final url = Uri.parse('${AppConstants.baseUrl}/profile');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 15));
+      return _handleResponse(response, 'Failed to fetch profile');
+    } catch (e) {
+      return {'success': false, 'error': _formatError(e)};
+    }
+  }
+
+  static Future<Map<String, dynamic>> initiatePayment(
+    num amount,
+    String productId,
+  ) async {
+    final token = await getValidToken();
+    if (token == null) return {'success': false, 'error': 'No access token'};
+
+    final url = Uri.parse('${AppConstants.baseUrl}/payments/initiate');
+    try {
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'amount': amount.toString(),
+              'product_id': productId,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      return _handleResponse(response, 'Failed to initiate payment');
+    } catch (e) {
+      return {'success': false, 'error': _formatError(e)};
+    }
+  }
+
+  static Future<Map<String, dynamic>> verifyPayment(String encodedData) async {
+    final token = await getValidToken();
+    if (token == null) return {'success': false, 'error': 'No access token'};
+
+    final url = Uri.parse('${AppConstants.baseUrl}/payments/verify');
+    try {
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'data': encodedData}),
+          )
+          .timeout(const Duration(seconds: 15));
+      return _handleResponse(response, 'Failed to verify payment');
+    } catch (e) {
+      return {'success': false, 'error': _formatError(e)};
     }
   }
 
