@@ -1,6 +1,4 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
 import '../services/api_service.dart';
@@ -21,11 +19,7 @@ class _SignupPageState extends State<SignupPage> {
   bool showConfirmPassword = false;
   bool loader = false;
 
-  int step = 0; // 0: signup, 1: verify
-  String? otp;
-  int _timerSeconds = 60;
-  bool _canResend = false;
-  Timer? _timer;
+  // Removing step/otp logic as per requirement
 
   // 🔹 Email validation
   bool isValidEmail(String email) {
@@ -46,11 +40,14 @@ class _SignupPageState extends State<SignupPage> {
     if (password.isEmpty) return 'Enter password';
     List<String> missing = [];
     if (password.length < 6) missing.add('• At least 6 characters');
-    if (!RegExp(r'[A-Z]').hasMatch(password)) missing.add('• An uppercase letter');
-    if (!RegExp(r'[a-z]').hasMatch(password)) missing.add('• A lowercase letter');
+    if (!RegExp(r'[A-Z]').hasMatch(password))
+      missing.add('• An uppercase letter');
+    if (!RegExp(r'[a-z]').hasMatch(password))
+      missing.add('• A lowercase letter');
     if (!RegExp(r'\d').hasMatch(password)) missing.add('• A number');
-    if (!RegExp(r'[-_@#$%^&+=]').hasMatch(password)) missing.add('• A special character (-_@#\$%^&+=)');
-    
+    if (!RegExp(r'[-_@#$%^&+=]').hasMatch(password))
+      missing.add('• A special character (-_@#\$%^&+=)');
+
     if (missing.isEmpty) return null;
     return 'Password must contain:\n${missing.join('\n')}';
   }
@@ -61,26 +58,8 @@ class _SignupPageState extends State<SignupPage> {
     return regex.hasMatch(name.trim());
   }
 
-  // 🔹 Timer for Resend OTP
-  void _startTimer() {
-    setState(() {
-      _timerSeconds = 60;
-      _canResend = false;
-    });
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_timerSeconds == 0) {
-        setState(() => _canResend = true);
-        timer.cancel();
-      } else {
-        setState(() => _timerSeconds--);
-      }
-    });
-  }
-
   @override
   void dispose() {
-    _timer?.cancel();
     super.dispose();
   }
 
@@ -98,16 +77,28 @@ class _SignupPageState extends State<SignupPage> {
           children: [
             Icon(Icons.error_outline, color: Colors.redAccent),
             SizedBox(width: 10),
-            Text("Error", style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+            Text(
+              "Error",
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
-        content: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
+        content: Text(
+          message,
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               "OK",
-              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondaryColor),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.secondaryColor,
+              ),
             ),
           ),
         ],
@@ -139,7 +130,7 @@ class _SignupPageState extends State<SignupPage> {
 
                     // 🔹 Title
                     Text(
-                      step == 0 ? "Create Account" : "Verify Email",
+                      "Create Account",
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -149,16 +140,14 @@ class _SignupPageState extends State<SignupPage> {
 
                     const SizedBox(height: 20),
                     Text(
-                      step == 0
-                          ? "Join the chess community today!"
-                          : "We've sent a 6-digit code to $email",
+                      "Join the chess community today!",
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: AppColors.textSecondary),
                     ),
 
                     const SizedBox(height: 40),
 
-                    if (step == 0) ...[
+                    if (true) ...[
                       // ================= NAME =================
                       _buildLabel("NAME"),
                       const SizedBox(height: 4),
@@ -257,62 +246,6 @@ class _SignupPageState extends State<SignupPage> {
                               ),
                             ),
                       ),
-                    ] else ...[
-                      // ================= OTP =================
-                      _buildLabel("ENTER OTP"),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        keyboardType: TextInputType.number,
-                        maxLength: 6,
-                        onChanged: (value) => otp = value.trim(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          letterSpacing: 8,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                        validator: (value) => value != null && value.length == 6
-                            ? null
-                            : "Enter 6-digit OTP",
-                        decoration: _inputDecoration(
-                          "000000",
-                        ).copyWith(counterText: ""),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            _canResend
-                                ? "Didn't receive code? "
-                                : "Resend code in ",
-                          ),
-                          if (_canResend)
-                            GestureDetector(
-                              onTap: () async {
-                                _startTimer();
-                                await ApiService.forgotPassword(
-                                  email!,
-                                ); // Reuse forgotPassword for resend
-                              },
-                              child: const Text(
-                                "Resend",
-                                style: TextStyle(
-                                  color: Colors.blue,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            )
-                          else
-                            Text(
-                              "${_timerSeconds}s",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                        ],
-                      ),
                     ],
 
                     const SizedBox(height: 30),
@@ -334,61 +267,29 @@ class _SignupPageState extends State<SignupPage> {
                           if (_formKey.currentState!.validate()) {
                             setState(() => loader = true);
 
-                            if (step == 0) {
-                              final result = await ApiService.signup(
-                                name!,
-                                email!,
-                                password!,
-                              );
-                              if (context.mounted) {
-                                setState(() => loader = false);
-                                if (result['success']) {
-                                  // 🔹 Account created — redirect to login page
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Account created successfully! Please login.'),
-                                        backgroundColor: Colors.green,
-                                        duration: Duration(seconds: 3),
-                                      ),
-                                    );
-                                    RouteGenerator.navigateToPageWithoutStack(
-                                      context,
-                                      Routes.loginRoute,
-                                    );
-                                  }
-                                } else {
-                                  _showErrorDialog(result['error']);
-                                }
-                              }
-                            } else {
-                              final result = await ApiService.verifyOtp(
-                                email!,
-                                otp!,
-                              );
-                              if (context.mounted) {
-                                setState(() => loader = false);
-                                if (result['success']) {
-                                  final prefs =
-                                      await SharedPreferences.getInstance();
-                                  await prefs.setString(
-                                    'accessToken',
-                                    result['data']['access'],
-                                  );
-                                  await prefs.setString(
-                                    'refreshToken',
-                                    result['data']['refresh'],
-                                  );
-
-                                  if (context.mounted) {
-                                    RouteGenerator.navigateToPageWithoutStack(
-                                      context,
-                                      Routes.homeRoute,
-                                    );
-                                  }
-                                } else {
-                                  _showErrorDialog(result['error']);
-                                }
+                            final result = await ApiService.signup(
+                              name!,
+                              email!,
+                              password!,
+                            );
+                            if (context.mounted) {
+                              setState(() => loader = false);
+                              if (result['success']) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Account created successfully! Please login.',
+                                    ),
+                                    backgroundColor: Colors.green,
+                                    duration: Duration(seconds: 3),
+                                  ),
+                                );
+                                RouteGenerator.navigateToPageWithoutStack(
+                                  context,
+                                  Routes.loginRoute,
+                                );
+                              } else {
+                                _showErrorDialog(result['error']);
                               }
                             }
                           }
@@ -398,7 +299,7 @@ class _SignupPageState extends State<SignupPage> {
                                 color: Colors.white,
                               )
                             : Text(
-                                step == 0 ? "Sign Up" : "Verify & Continue",
+                                "Sign Up",
                                 style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
@@ -413,26 +314,20 @@ class _SignupPageState extends State<SignupPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          step == 0
-                              ? "Already have an account? "
-                              : "Entered wrong email? ",
-                          style: const TextStyle(color: Colors.white70),
+                        const Text(
+                          "Already have an account? ",
+                          style: TextStyle(color: Colors.white70),
                         ),
                         GestureDetector(
                           onTap: () {
-                            if (step == 0) {
-                              RouteGenerator.navigateToPage(
-                                context,
-                                Routes.loginRoute,
-                              );
-                            } else {
-                              setState(() => step = 0);
-                            }
+                            RouteGenerator.navigateToPage(
+                              context,
+                              Routes.loginRoute,
+                            );
                           },
-                          child: Text(
-                            step == 0 ? "Login" : "Change Email",
-                            style: const TextStyle(
+                          child: const Text(
+                            "Login",
+                            style: TextStyle(
                               color: AppColors.secondaryColor,
                               fontWeight: FontWeight.bold,
                               decoration: TextDecoration.underline,
