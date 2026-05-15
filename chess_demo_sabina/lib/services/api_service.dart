@@ -44,7 +44,7 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> login(
-    String username,
+    String email,
     String password,
   ) async {
     final url = Uri.parse('${AppConstants.baseUrl}/login');
@@ -53,7 +53,7 @@ class ApiService {
           .post(
             url,
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'username': username, 'password': password}),
+            body: jsonEncode({'email': email, 'password': password}),
           )
           .timeout(const Duration(seconds: 30));
       return _handleResponse(response, 'Login failed');

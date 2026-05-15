@@ -16,7 +16,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  String? username, password;
+  String? email, password;
   bool showPassword = false;
   bool loader = false;
   bool _rememberMe = false;
@@ -49,8 +49,9 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  bool isValidUsername(String username) {
-    return username.trim().isNotEmpty;
+  bool isValidEmail(String email) {
+    final regex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    return regex.hasMatch(email.trim());
   }
 
   // 🔹 Password validation (basic for now)
@@ -96,14 +97,14 @@ class _LoginPageState extends State<LoginPage> {
 
                     const SizedBox(height: 50),
 
-                    // ================= USERNAME =================
-                    _buildLabel("USERNAME"),
+                    // ================= EMAIL =================
+                    _buildLabel("EMAIL"),
                     const SizedBox(height: 4),
 
                     TextFormField(
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        hintText: "Enter username",
+                        hintText: "Enter email",
                         hintStyle: const TextStyle(color: Colors.white38),
                         filled: true,
                         fillColor: Colors.white.withOpacity(0.05),
@@ -122,13 +123,13 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                       ),
-                      onChanged: (value) => username = value.trim(),
+                      onChanged: (value) => email = value.trim(),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return "Enter username";
+                          return "Enter email";
                         }
-                        if (!isValidUsername(value)) {
-                          return "Enter valid username";
+                        if (!isValidEmail(value)) {
+                          return "Enter valid email";
                         }
                         return null;
                       },
@@ -262,7 +263,7 @@ class _LoginPageState extends State<LoginPage> {
                             setState(() => loader = true);
 
                             final result = await ApiService.login(
-                              username!,
+                              email!,
                               password!,
                             );
 
@@ -280,21 +281,21 @@ class _LoginPageState extends State<LoginPage> {
                                   'refreshToken',
                                   result['data']['refresh'],
                                 );
-                                await prefs.setString('username', username!);
+                                await prefs.setString('username', result['data']['username']);
                                 await prefs.setInt('userId', result['data']['user_id']);
 
                                 // 🔹 Also save credentials if rememberMe or for Biometric setup later
                                 await prefs.setString(
-                                  'last_username',
-                                  username!,
+                                  'last_email',
+                                  email!,
                                 );
 
                                 // 🔹 Save Remember Me preference
                                 await prefs.setBool('isRemembered', _rememberMe);
 
                                 // 🔹 Check if biometric setup is needed for THIS user
-                                final storedBioUser = await secureStorage.read(key: 'bio_username');
-                                final biometricSetForThisUser = storedBioUser == username;
+                                final storedBioUser = await secureStorage.read(key: 'bio_email');
+                                final biometricSetForThisUser = storedBioUser == email;
 
                                 if (!biometricSetForThisUser &&
                                     isBiometricAvailable &&
@@ -303,7 +304,7 @@ class _LoginPageState extends State<LoginPage> {
                                     context,
                                     result['data']['access'],
                                     result['data']['refresh'],
-                                    username!,
+                                    email!,
                                     password!,
                                   );
                                 } else {
@@ -466,11 +467,11 @@ class _LoginPageState extends State<LoginPage> {
         }
 
         // 3. Both tokens expired — use stored credentials for fresh login
-        final storedUsername = await secureStorage.read(key: 'bio_username');
+        final storedEmail = await secureStorage.read(key: 'bio_email');
         final storedPassword = await secureStorage.read(key: 'bio_password');
 
-        if (storedUsername != null && storedPassword != null) {
-          final loginResult = await ApiService.login(storedUsername, storedPassword);
+        if (storedEmail != null && storedPassword != null) {
+          final loginResult = await ApiService.login(storedEmail, storedPassword);
           if (loginResult['success'] && context.mounted) {
             final newAccess = loginResult['data']['access'];
             final newRefresh = loginResult['data']['refresh'];
@@ -519,7 +520,7 @@ class _LoginPageState extends State<LoginPage> {
           ],
         ),
         content: const Text(
-          "To use fingerprint login, please log in manually with your username and password once first. \n\nAfter logging in, you'll be asked if you want to enable it!",
+          "To use fingerprint login, please log in manually with your email and password once first. \n\nAfter logging in, you'll be asked if you want to enable it!",
           style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
@@ -540,7 +541,7 @@ class _LoginPageState extends State<LoginPage> {
     BuildContext context,
     String accessToken,
     String refreshToken,
-    String loginUsername,
+    String loginEmail,
     String loginPassword,
   ) {
     showDialog(
@@ -592,7 +593,7 @@ class _LoginPageState extends State<LoginPage> {
                 await prefs.setBool('isBiometricEnabled', true);
 
                 // 3. Store credentials securely for persistent biometric login
-                await secureStorage.write(key: 'bio_username', value: loginUsername);
+                await secureStorage.write(key: 'bio_email', value: loginEmail);
                 await secureStorage.write(key: 'bio_password', value: loginPassword);
 
                 if (context.mounted) {
