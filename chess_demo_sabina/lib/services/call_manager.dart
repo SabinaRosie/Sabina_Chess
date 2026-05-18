@@ -33,6 +33,8 @@ class CallManager {
   StreamSubscription? wsSubscription;
   Timer? durationTimer;
   Timer? heartbeatTimer;
+  List<RTCIceCandidate> remoteCandidatesQueue = [];
+  bool isRemoteDescriptionSet = false;
   OverlayEntry? _overlayEntry;
   bool isMinimized = false;
 
@@ -134,17 +136,16 @@ class CallManager {
 
       peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
         debugPrint("📡 WebRTC: Connection State: ${state.name}");
-        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected && !isConnected) {
-          _onUserJoined();
+        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          if (!isConnected) _onUserJoined();
         }
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
           debugPrint("❌ WebRTC: Connection Failed - Likely network restriction or TURN failure.");
         }
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed || 
             state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-          if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
-            endCall();
-          }
+          debugPrint("📡 WebRTC: Connection ${state.name}. Cleanup triggered.");
+          // Don't call endCall() automatically on disconnect as it might be a temporary network flip
         }
       };
 
@@ -183,16 +184,36 @@ class CallManager {
         break;
       case 'offer':
         await peerConnection!.setRemoteDescription(RTCSessionDescription(payload['sdp'], payload['type']));
+        isRemoteDescriptionSet = true;
+        
+        // Process queued candidates
+        for (var candidate in remoteCandidatesQueue) {
+          await peerConnection!.addCandidate(candidate);
+        }
+        remoteCandidatesQueue.clear();
+
         final answer = await peerConnection!.createAnswer();
         await peerConnection!.setLocalDescription(answer);
         SignalingService.sendWsSignal('answer', {'room_id': roomId!, 'sdp': answer.sdp, 'type': answer.type});
         break;
       case 'answer':
         await peerConnection!.setRemoteDescription(RTCSessionDescription(payload['sdp'], payload['type']));
+        isRemoteDescriptionSet = true;
+        
+        // Process queued candidates
+        for (var candidate in remoteCandidatesQueue) {
+          await peerConnection!.addCandidate(candidate);
+        }
+        remoteCandidatesQueue.clear();
         break;
       case 'candidate':
         final candidate = RTCIceCandidate(payload['candidate'], payload['sdpMid'], payload['sdpMLineIndex']);
-        await peerConnection!.addCandidate(candidate);
+        if (isRemoteDescriptionSet) {
+          await peerConnection!.addCandidate(candidate);
+        } else {
+          remoteCandidatesQueue.add(candidate);
+          debugPrint("WebRTC: Queued candidate (Remote description not yet set)");
+        }
         break;
       case 'video_toggle':
         remoteVideoEnabled = payload['enabled'];
@@ -283,12 +304,20 @@ class CallManager {
     wsSubscription?.cancel();
     durationTimer?.cancel();
     heartbeatTimer?.cancel();
-    SignalingService.sendWsSignal('end_call', {'room_id': roomId!});
+    
+    if (roomId != null) {
+      SignalingService.sendWsSignal('end_call', {'room_id': roomId!});
+      roomId = null;
+    }
+    
     SignalingService.closeWebSocket();
     localStream?.getTracks().forEach((t) => t.stop());
+    remoteRenderer.srcObject = null;
     peerConnection?.close();
+    peerConnection = null;
     
-    roomId = null;
+    isRemoteDescriptionSet = false;
+    remoteCandidatesQueue.clear();
     isConnected = false;
     isMinimized = false;
     notify();

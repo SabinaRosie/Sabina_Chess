@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:chess_demo_sabina/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
 import '../utils/color_utils.dart';
+import '../services/api_service.dart';
+import '../services/esewa_service.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -19,6 +22,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   late Animation<Offset> _slideAnim;
   bool _showInfo = false; // ── Toggle for description ──
   int _invitationCount = 0;
+  int _coins = 0;
   StreamSubscription? _invitationSub;
 
   @override
@@ -41,6 +45,146 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
     });
     // Initial fetch
     _invitationCount = NotificationService().currentInvitationCount;
+    _fetchCoins();
+  }
+
+  Future<void> _fetchCoins() async {
+    final result = await ApiService.getUserProfile();
+    if (result['success']) {
+      setState(() {
+        _coins = result['data']['coins'] ?? 0;
+      });
+    }
+  }
+
+  void _showCoinDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A0F0A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(Icons.monetization_on_rounded, color: Colors.amber, size: 28),
+            SizedBox(width: 12),
+            Text(
+              "Wallet Balance",
+              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 30),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    "$_coins",
+                    style: const TextStyle(
+                      fontSize: 42,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Text(
+                    "Total Coins",
+                    style: TextStyle(color: Colors.white54, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _payWithEsewa(100, "coins_1000"); // Example: 100 NPR for 1000 coins
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryColor,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  "Buy More Coins",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _payWithEsewa(double amount, String productId) async {
+    // 1. Initiate on Backend to get a unique Transaction UUID
+    final initResult = await ApiService.initiatePayment(amount, productId);
+    if (!initResult['success']) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to initiate: ${initResult['error']}")),
+        );
+      }
+      return;
+    }
+
+    // Extract the transaction_uuid created by the backend
+    final paymentData = initResult['data']['payment_data'];
+    final String transactionUuid = paymentData['transaction_uuid'];
+
+    // 2. Launch Native eSewa SDK
+    EsewaService.initiatePayment(
+      productId: transactionUuid, // Use UUID as productId to guarantee uniqueness
+      productName: "Chess Coins ($amount NPR)",
+      amount: amount.toString(),
+      onSuccess: () async {
+        // 3. Payment successful and verified by SDK. Now inform Backend to add coins.
+        // We mock the base64 structure the backend verify_payment expects.
+        final payload = {
+          "transaction_uuid": transactionUuid,
+          "total_amount": amount.toString(),
+          "status": "COMPLETE",
+          "transaction_code": "NATIVE_SDK_SUCCESS" 
+        };
+        final encodedData = base64.encode(utf8.encode(jsonEncode(payload)));
+        
+        final verifyResult = await ApiService.verifyPayment(encodedData);
+        
+        if (verifyResult['success']) {
+          _fetchCoins(); // Update the UI balance
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Payment Successful! Coins added."),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Backend Verification Failed: ${verifyResult['error']}")),
+            );
+          }
+        }
+      },
+      onFailure: (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error)),
+          );
+        }
+      },
+    );
   }
 
   @override
@@ -81,7 +225,38 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const SizedBox(height: 44),
+                    // ── Coin Header Row ──
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        GestureDetector(
+                          onTap: _showCoinDialog,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.monetization_on_rounded, color: Colors.amber, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "$_coins",
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
                     // ── Chess King Icon ──
                     Container(
                       width: 116,

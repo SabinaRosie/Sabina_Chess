@@ -169,6 +169,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.12"
+  esewa_flutter_sdk:
+    dependency: "direct main"
+    description:
+      path: "eSewa Flutter Sdk/eSewa Flutter Sdk v2.5.5_25/esewa_flutter_sdk"
+      relative: true
+    source: path
+    version: "2.5.5+25"
   fake_async:
     dependency: transitive
     description:

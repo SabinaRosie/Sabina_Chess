@@ -43,7 +43,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _checkExistingSession() async {
     // Check if biometric credentials are actually stored (not just the flag)
-    final storedBioUser = await secureStorage.read(key: 'bio_username');
+    final storedBioUser = await secureStorage.read(key: 'bio_email');
     setState(() {
       isBiometricEnabled = storedBioUser != null;
     });
