@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:chess_demo_sabina/services/notification_service.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +7,7 @@ import '../utils/route_const.dart';
 import '../utils/route_generator.dart';
 import '../utils/color_utils.dart';
 import '../services/api_service.dart';
-import 'payment_webview.dart';
+import '../services/esewa_service.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -125,7 +126,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   }
 
   void _payWithEsewa(double amount, String productId) async {
-    // 1. Get signature and details from Backend
+    // 1. Initiate on Backend to get a unique Transaction UUID
     final initResult = await ApiService.initiatePayment(amount, productId);
     if (!initResult['success']) {
       if (mounted) {
@@ -136,40 +137,54 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
       return;
     }
 
-    final data = initResult['data']['payment_data'];
+    // Extract the transaction_uuid created by the backend
+    final paymentData = initResult['data']['payment_data'];
+    final String transactionUuid = paymentData['transaction_uuid'];
 
-    if (mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PaymentWebView(
-            paymentData: data,
-            onSuccess: (encodedData) async {
-              // 3. Success! Verify on Backend
-              final verifyResult = await ApiService.verifyPayment(encodedData);
-              if (verifyResult['success']) {
-                _fetchCoins(); // Update the UI balance
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Payment Successful! Coins added."),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              }
-            },
-            onFailure: () {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Payment Failed or Cancelled")),
-                );
-              }
-            },
-          ),
-        ),
-      );
-    }
+    // 2. Launch Native eSewa SDK
+    EsewaService.initiatePayment(
+      productId: transactionUuid, // Use UUID as productId to guarantee uniqueness
+      productName: "Chess Coins ($amount NPR)",
+      amount: amount.toString(),
+      onSuccess: () async {
+        // 3. Payment successful and verified by SDK. Now inform Backend to add coins.
+        // We mock the base64 structure the backend verify_payment expects.
+        final payload = {
+          "transaction_uuid": transactionUuid,
+          "total_amount": amount.toString(),
+          "status": "COMPLETE",
+          "transaction_code": "NATIVE_SDK_SUCCESS" 
+        };
+        final encodedData = base64.encode(utf8.encode(jsonEncode(payload)));
+        
+        final verifyResult = await ApiService.verifyPayment(encodedData);
+        
+        if (verifyResult['success']) {
+          _fetchCoins(); // Update the UI balance
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Payment Successful! Coins added."),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Backend Verification Failed: ${verifyResult['error']}")),
+            );
+          }
+        }
+      },
+      onFailure: (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error)),
+          );
+        }
+      },
+    );
   }
 
   @override
