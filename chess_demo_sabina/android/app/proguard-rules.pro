@@ -12,3 +12,11 @@
 
 # Google Play Core (used by Flutter deferred components)
 -dontwarn com.google.android.play.core.**
+
+# OkHttp and eSewa Crypto dependencies
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn javax.annotation.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
