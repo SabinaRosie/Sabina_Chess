@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'utils/route_const.dart';
-import 'utils/route_generator.dart';
-import 'services/notification_service.dart';
-import 'services/foreground_service.dart';
+import './core/routing/route_const.dart';
+import './core/routing/route_generator.dart';
+import './core/services/notification_service.dart';
+import './core/services/foreground_service.dart';
 
 // 🔹 Top-level background message handler
 @pragma('vm:entry-point')
