@@ -88,6 +88,56 @@ class SignalingService {
     }
   }
 
+  static List<Map<String, dynamic>> _groupIceServers(List<Map<String, dynamic>> rawServers) {
+    final List<Map<String, dynamic>> grouped = [];
+    final Map<String, Map<String, dynamic>> turnGroups = {};
+    final List<String> stunUrls = [];
+
+    for (var server in rawServers) {
+      final urlsVal = server['urls'];
+      List<String> urlsList = [];
+      if (urlsVal is String) {
+        urlsList.add(urlsVal);
+      } else if (urlsVal is List) {
+        urlsList.addAll(urlsVal.map((e) => e.toString()));
+      }
+
+      final username = server['username'];
+      final credential = server['credential'];
+
+      if (username != null && credential != null) {
+        final key = "${username}_${credential}";
+        if (turnGroups.containsKey(key)) {
+          final List<String> existingUrls = List<String>.from(turnGroups[key]!['urls'] as List);
+          for (var u in urlsList) {
+            if (!existingUrls.contains(u)) {
+              existingUrls.add(u);
+            }
+          }
+          turnGroups[key]!['urls'] = existingUrls;
+        } else {
+          turnGroups[key] = {
+            'urls': urlsList,
+            'username': username,
+            'credential': credential,
+          };
+        }
+      } else {
+        for (var u in urlsList) {
+          if (!stunUrls.contains(u)) {
+            stunUrls.add(u);
+          }
+        }
+      }
+    }
+
+    if (stunUrls.isNotEmpty) {
+      grouped.add({'urls': stunUrls});
+    }
+    grouped.addAll(turnGroups.values);
+    return grouped;
+  }
+
   static Future<List<Map<String, dynamic>>> getIceServers() async {
     try {
       final headers = await _getHeaders();
@@ -97,34 +147,48 @@ class SignalingService {
       ).timeout(const Duration(seconds: 5)); // 🔹 Fast timeout - fall back to hardcoded if server is slow
       final res = await _handleResponse(response);
       if (res['success']) {
-        return List<Map<String, dynamic>>.from(res['data']['ice_servers']);
+        final List<dynamic> serversList = res['data']['ice_servers'] ?? [];
+        final List<Map<String, dynamic>> parsedList = serversList.map((e) => Map<String, dynamic>.from(e)).toList();
+        return _groupIceServers(parsedList);
       }
     } catch (e) {
       debugPrint("ICE Servers Error (using fallback): $e");
     }
-    // 🔹 Reliable fallback with TURN servers for cross-network calls
-    return [
-      {
-        'urls': [
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:3478',
-        ],
-        'username': 'openrelayproject',
-        'credential': 'openrelayproject',
-      },
-      {
-        'urls': [
-          'turns:openrelay.metered.ca:443?transport=tcp',
-          'turns:openrelay.metered.ca:3478?transport=tcp',
-        ],
-        'username': 'openrelayproject',
-        'credential': 'openrelayproject',
-      },
+    // 🔹 Reliable fallback with TURN servers grouped for cross-network calls (highly compatible format)
+    return _groupIceServers([
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun2.l.google.com:19302'},
-    ];
+      {'urls': 'stun:stun3.l.google.com:19302'},
+      {'urls': 'stun:stun4.l.google.com:19302'},
+      {'urls': 'stun:stun.cloudflare.com:3478'},
+      {'urls': 'stun:stun.services.mozilla.com'},
+      {
+        'urls': 'turn:openrelay.metered.ca:80',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turn:openrelay.metered.ca:443',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turn:openrelay.metered.ca:3478',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turns:openrelay.metered.ca:443?transport=tcp',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turns:openrelay.metered.ca:3478?transport=tcp',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+    ]);
   }
 
   // ── Static WebSocket Handlers ──

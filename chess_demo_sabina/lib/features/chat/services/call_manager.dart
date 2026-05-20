@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../core/services/signaling_service.dart';
 import '../widgets/call_overlay_widget.dart';
 import '../../../core/routing/route_const.dart';
@@ -40,6 +42,10 @@ class CallManager {
   bool _hasAttemptedIceRestart = false;
   Timer? _iceRestartTimer;
 
+  bool isConnectingWebSocket = false;
+  bool isReconnecting = false;
+  Timer? _reconnectTimer;
+
   final _updateController = StreamController<void>.broadcast();
   Stream<void> get onUpdate => _updateController.stream;
 
@@ -73,13 +79,64 @@ class CallManager {
 
   Future<void> _initWebRTC() async {
     try {
-      // 🔹 Reduced video resolution for smoother calls over relay (TURN) servers
-      final constraints = {
+      if (!kIsWeb) {
+        debugPrint("🔐 CallManager: Checking microphone permission...");
+        var micStatus = await Permission.microphone.status;
+        if (!micStatus.isGranted) {
+          micStatus = await Permission.microphone.request();
+          if (!micStatus.isGranted) {
+            debugPrint("❌ CallManager: Microphone permission denied");
+            throw Exception('Microphone permission is required to start the call.');
+          }
+        }
+
+        if (callType == 'video') {
+          debugPrint("🔐 CallManager: Checking camera permission...");
+          var camStatus = await Permission.camera.status;
+          if (!camStatus.isGranted) {
+            camStatus = await Permission.camera.request();
+            if (!camStatus.isGranted) {
+              debugPrint("⚠️ CallManager: Camera permission denied. Will try standard setup anyway.");
+            }
+          }
+        }
+      }
+
+      final idealConstraints = {
         'audio': {'echoCancellation': true, 'noiseSuppression': true, 'autoGainControl': true},
-        'video': {'facingMode': 'user', 'width': {'ideal': 640}, 'height': {'ideal': 480}, 'frameRate': {'ideal': 24}}
+        'video': callType == 'video'
+            ? {'facingMode': 'user', 'width': {'ideal': 640}, 'height': {'ideal': 480}, 'frameRate': {'ideal': 24}}
+            : false
       };
       
-      localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      final fallbackConstraints = {
+        'audio': true,
+        'video': callType == 'video',
+      };
+
+      MediaStream? acquiredStream;
+      int attempts = 0;
+
+      while (attempts < 2) {
+        try {
+          final constraints = attempts == 0 ? idealConstraints : fallbackConstraints;
+          debugPrint("🎥 CallManager: getUserMedia attempt ${attempts + 1} with constraints: $constraints");
+          acquiredStream = await navigator.mediaDevices.getUserMedia(constraints);
+          if (acquiredStream != null) {
+            debugPrint("✅ CallManager: Acquired MediaStream successfully on attempt ${attempts + 1}");
+            break;
+          }
+        } catch (e) {
+          attempts++;
+          if (attempts == 2) {
+            debugPrint("❌ CallManager: Failed to get local stream after 2 attempts: $e");
+            rethrow;
+          }
+          debugPrint("⚠️ CallManager: 1st getUserMedia attempt failed ($e). Retrying with fallback constraints...");
+        }
+      }
+
+      localStream = acquiredStream;
       localRenderer.srcObject = localStream;
       
       if (callType == 'audio') {
@@ -92,6 +149,8 @@ class CallManager {
       final iceConfig = {
         'iceServers': servers,
         'iceCandidatePoolSize': 10,
+        'bundlePolicy': 'balanced',
+        'rtcpMuxPolicy': 'require',
         'sdpSemantics': 'unified-plan',
         'iceTransportPolicy': 'all',
       };
@@ -104,6 +163,7 @@ class CallManager {
       }
 
       peerConnection!.onTrack = (RTCTrackEvent event) {
+        debugPrint("📡 WebRTC: onTrack event fired - kind: ${event.track.kind}, streams: ${event.streams.length}");
         if (event.streams.isNotEmpty) {
           remoteRenderer.srcObject = event.streams[0];
           if (event.track.kind == 'video') {
@@ -112,6 +172,14 @@ class CallManager {
           if (!isConnected) _onUserJoined();
           notify();
         }
+      };
+
+      peerConnection!.onAddStream = (MediaStream stream) {
+        debugPrint("📡 WebRTC: onAddStream event fired - remote stream added!");
+        remoteRenderer.srcObject = stream;
+        remoteVideoEnabled = true;
+        if (!isConnected) _onUserJoined();
+        notify();
       };
 
       peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
@@ -164,24 +232,95 @@ class CallManager {
         }
       };
 
-      final stream = await SignalingService.connectWebSocket(roomId!);
-      wsSubscription = stream?.listen(_onWsMessage);
+      await _connectWebSocket();
+    } catch (e) {
+      debugPrint("Call Manager Init Error: $e");
+    }
+  }
 
+  Future<void> _connectWebSocket() async {
+    if (isConnectingWebSocket) return;
+    isConnectingWebSocket = true;
+    notify();
+
+    try {
+      if (wsSubscription != null) {
+        await wsSubscription!.cancel();
+        wsSubscription = null;
+      }
+      SignalingService.closeWebSocket();
+
+      debugPrint("🔌 CallManager: Connecting WebSocket for room $roomId");
+      final stream = await SignalingService.connectWebSocket(roomId!);
+      if (stream == null) {
+        throw Exception("Failed to acquire WebSocket stream");
+      }
+
+      isConnectingWebSocket = false;
+      isReconnecting = false;
+
+      wsSubscription = stream.listen(
+        _onWsMessage,
+        onError: (err) {
+          debugPrint("❌ CallManager WS Stream Error: $err");
+          _handleWsDisconnect();
+        },
+        onDone: () {
+          debugPrint("📡 CallManager WS Stream closed (onDone)");
+          _handleWsDisconnect();
+        },
+      );
+
+      // Send initial presence
       if (isCaller!) {
-        callStatus = 'Ringing...';
+        if (callStatus == 'Initializing...') {
+          callStatus = 'Ringing...';
+        }
         SignalingService.sendWsSignal('caller_ready', {'room_id': roomId, 'video_enabled': !isCameraOff});
       } else {
         SignalingService.sendWsSignal('receiver_ready', {'room_id': roomId, 'video_enabled': !isCameraOff});
       }
 
-      heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (t) {
-        SignalingService.sendWsSignal('ping', {'room_id': roomId!});
-      });
-
+      _startHeartbeat();
       notify();
     } catch (e) {
-      debugPrint("Call Manager Init Error: $e");
+      isConnectingWebSocket = false;
+      debugPrint("❌ CallManager WS Connection Setup Failed: $e");
+      _handleWsDisconnect();
     }
+  }
+
+  void _handleWsDisconnect() {
+    _stopHeartbeat();
+    _reconnectTimer?.cancel();
+
+    if (roomId != null && peerConnection != null) {
+      isReconnecting = true;
+      callStatus = 'Reconnecting...';
+      notify();
+
+      debugPrint("🔄 CallManager: Disconnected. Scheduling WebSocket reconnect in 3 seconds...");
+      _reconnectTimer = Timer(const Duration(seconds: 3), () {
+        if (roomId != null && peerConnection != null) {
+          _connectWebSocket();
+        }
+      });
+    }
+  }
+
+  void _startHeartbeat() {
+    heartbeatTimer?.cancel();
+    heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (t) {
+      if (roomId != null) {
+        SignalingService.sendWsSignal('ping', {'room_id': roomId!});
+      }
+    });
+  }
+
+  void _stopHeartbeat() {
+    heartbeatTimer?.cancel();
+    heartbeatTimer = null;
+  }
   }
 
   void _onWsMessage(dynamic message) async {
@@ -190,6 +329,11 @@ class CallManager {
     final payload = data['data'];
 
     switch (type) {
+      case 'caller_ready':
+        if (!isCaller! && isConnected == false) {
+          SignalingService.sendWsSignal('receiver_ready', {'room_id': roomId!, 'video_enabled': !isCameraOff});
+        }
+        break;
       case 'receiver_ready':
         if (isCaller! && isConnected == false) {
           final offer = await peerConnection!.createOffer({'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true}});
@@ -207,7 +351,12 @@ class CallManager {
         }
         remoteCandidatesQueue.clear();
 
-        final answer = await peerConnection!.createAnswer();
+        final answer = await peerConnection!.createAnswer({
+          'mandatory': {
+            'OfferToReceiveAudio': true,
+            'OfferToReceiveVideo': true,
+          }
+        });
         await peerConnection!.setLocalDescription(answer);
         SignalingService.sendWsSignal('answer', {'room_id': roomId!, 'sdp': answer.sdp, 'type': answer.type});
         break;
@@ -222,12 +371,20 @@ class CallManager {
         remoteCandidatesQueue.clear();
         break;
       case 'candidate':
-        final candidate = RTCIceCandidate(payload['candidate'], payload['sdpMid'], payload['sdpMLineIndex']);
-        if (isRemoteDescriptionSet) {
-          await peerConnection!.addCandidate(candidate);
-        } else {
-          remoteCandidatesQueue.add(candidate);
-          debugPrint("WebRTC: Queued candidate (Remote description not yet set)");
+        final candidateStr = payload['candidate'];
+        final sdpMid = payload['sdpMid'];
+        final sdpMLineIndex = payload['sdpMLineIndex'] is String
+            ? int.tryParse(payload['sdpMLineIndex'])
+            : payload['sdpMLineIndex'];
+
+        if (candidateStr != null) {
+          final candidate = RTCIceCandidate(candidateStr, sdpMid, sdpMLineIndex);
+          if (isRemoteDescriptionSet) {
+            await peerConnection!.addCandidate(candidate);
+          } else {
+            remoteCandidatesQueue.add(candidate);
+            debugPrint("WebRTC: Queued candidate (Remote description not yet set)");
+          }
         }
         break;
       case 'video_toggle':
@@ -353,9 +510,17 @@ class CallManager {
   void endCall() {
     _hideOverlay();
     wsSubscription?.cancel();
+    wsSubscription = null;
     durationTimer?.cancel();
+    durationTimer = null;
     heartbeatTimer?.cancel();
+    heartbeatTimer = null;
     _iceRestartTimer?.cancel();
+    _iceRestartTimer = null;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    isReconnecting = false;
+    isConnectingWebSocket = false;
     
     if (roomId != null) {
       SignalingService.sendWsSignal('end_call', {'room_id': roomId!});
