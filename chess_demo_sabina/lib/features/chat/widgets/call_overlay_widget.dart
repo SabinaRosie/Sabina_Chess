@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../services/call_manager.dart';
@@ -13,13 +14,42 @@ class CallOverlayWidget extends StatefulWidget {
 class _CallOverlayWidgetState extends State<CallOverlayWidget> {
   Offset _offset = const Offset(20, 100);
   final CallManager _callManager = CallManager();
+  StreamSubscription? _updateSubscription;
+
+  final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
+  bool _renderersInitialized = false;
+
+  Future<void> _initRenderers() async {
+    await _remoteRenderer.initialize();
+    _remoteRenderer.srcObject = _callManager.remoteStream;
+    if (mounted) {
+      setState(() {
+        _renderersInitialized = true;
+      });
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _callManager.onUpdate.listen((_) {
-      if (mounted) setState(() {});
+    _initRenderers();
+    _updateSubscription = _callManager.onUpdate.listen((_) {
+      if (mounted) {
+        setState(() {
+          if (_remoteRenderer.srcObject != _callManager.remoteStream) {
+            _remoteRenderer.srcObject = _callManager.remoteStream;
+          }
+        });
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    _updateSubscription?.cancel();
+    _remoteRenderer.srcObject = null;
+    _remoteRenderer.dispose();
+    super.dispose();
   }
 
   String _formatDuration(int seconds) {
@@ -60,9 +90,9 @@ class _CallOverlayWidgetState extends State<CallOverlayWidget> {
               borderRadius: BorderRadius.circular(18),
               child: Stack(
                 children: [
-                  if (_callManager.remoteVideoEnabled && _callManager.remoteRenderer.srcObject != null)
+                  if (_callManager.remoteVideoEnabled && _renderersInitialized && _remoteRenderer.srcObject != null)
                     RTCVideoView(
-                      _callManager.remoteRenderer,
+                      _remoteRenderer,
                       objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                     )
                   else

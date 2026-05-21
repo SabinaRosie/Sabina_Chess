@@ -35,6 +35,24 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
   static const String beepUrl = 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3';
  
   StreamSubscription? _updateSubscription;
+
+  final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
+  final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
+  bool _renderersInitialized = false;
+
+  Future<void> _initRenderers() async {
+    await _localRenderer.initialize();
+    await _remoteRenderer.initialize();
+    
+    _localRenderer.srcObject = _callManager.localStream;
+    _remoteRenderer.srcObject = _callManager.remoteStream;
+    
+    if (mounted) {
+      setState(() {
+        _renderersInitialized = true;
+      });
+    }
+  }
  
   @override
   void initState() {
@@ -42,8 +60,19 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
     WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(duration: const Duration(milliseconds: 1500), vsync: this)..repeat(reverse: true);
     
+    _initRenderers();
+    
     _updateSubscription = _callManager.onUpdate.listen((_) {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {
+          if (_localRenderer.srcObject != _callManager.localStream) {
+            _localRenderer.srcObject = _callManager.localStream;
+          }
+          if (_remoteRenderer.srcObject != _callManager.remoteStream) {
+            _remoteRenderer.srcObject = _callManager.remoteStream;
+          }
+        });
+      }
       if (_callManager.roomId == null) {
         // Call ended remotely or locally
         Navigator.pushReplacement(
@@ -112,6 +141,12 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
     _updateSubscription?.cancel();
     _pulseController.dispose();
     _audioPlayer.dispose();
+    
+    _localRenderer.srcObject = null;
+    _remoteRenderer.srcObject = null;
+    _localRenderer.dispose();
+    _remoteRenderer.dispose();
+    
     super.dispose();
   }
 
@@ -134,11 +169,21 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
         body: Stack(
           children: [
             // Remote Video
-            if (_callManager.isConnected && _callManager.remoteVideoEnabled)
-              RTCVideoView(_callManager.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+            Positioned.fill(
+              child: _renderersInitialized
+                  ? RTCVideoView(
+                      _remoteRenderer,
+                      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                    )
+                  : Container(color: Colors.black),
+            ),
             
             // Audio Call / Placeholder UI
-            if (!_callManager.isConnected || !_callManager.remoteVideoEnabled)
+            if (!_callManager.isConnected || 
+                !_callManager.remoteVideoEnabled || 
+                !_renderersInitialized ||
+                _remoteRenderer.srcObject == null ||
+                _remoteRenderer.srcObject!.getVideoTracks().isEmpty)
               Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -182,7 +227,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
               ),
             
             // Local Video Preview
-            if (!_callManager.isCameraOff)
+            if (!_callManager.isCameraOff && _renderersInitialized)
               Positioned(
                 top: 50,
                 right: 20,
@@ -190,7 +235,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                 height: 150,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(15),
-                  child: RTCVideoView(_callManager.localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                  child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
                 ),
               ),
 

@@ -16,6 +16,7 @@ class CallManager {
 
   RTCPeerConnection? peerConnection;
   MediaStream? localStream;
+  MediaStream? remoteStream;
   RTCVideoRenderer localRenderer = RTCVideoRenderer();
   RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
 
@@ -49,9 +50,13 @@ class CallManager {
   final _updateController = StreamController<void>.broadcast();
   Stream<void> get onUpdate => _updateController.stream;
 
+  bool _isInitialized = false;
+
   Future<void> init() async {
+    if (_isInitialized) return;
     await localRenderer.initialize();
     await remoteRenderer.initialize();
+    _isInitialized = true;
   }
 
   void notify() => _updateController.add(null);
@@ -162,10 +167,54 @@ class CallManager {
         await peerConnection!.addTrack(track, localStream!);
       }
 
-      peerConnection!.onTrack = (RTCTrackEvent event) {
+      // Explicitly set transceivers to SendRecv for unified-plan compatibility
+      try {
+        final transceivers = await peerConnection!.getTransceivers();
+        for (var t in transceivers) {
+          final kind = t.receiver.track?.kind ?? t.sender.track?.kind;
+          if (kind == 'audio' || kind == 'video') {
+            debugPrint("📡 CallManager: Explicitly setting transceiver $kind to SendRecv");
+            await t.setDirection(TransceiverDirection.SendRecv);
+          }
+        }
+      } catch (e) {
+        debugPrint("⚠️ CallManager: Error setting transceiver directions: $e");
+      }
+
+      peerConnection!.onTrack = (RTCTrackEvent event) async {
         debugPrint("📡 WebRTC: onTrack event fired - kind: ${event.track.kind}, streams: ${event.streams.length}");
+        event.track.enabled = true; // 🔹 Explicitly ensure the remote track is enabled/active!
+        
         if (event.streams.isNotEmpty) {
-          remoteRenderer.srcObject = event.streams[0];
+          final stream = event.streams[0];
+          debugPrint("📡 WebRTC: Remote stream track count: ${stream.getTracks().length}");
+          
+          remoteStream = stream;
+          
+          // 🔹 Force re-binding of the native renderer by re-assigning srcObject
+          remoteRenderer.srcObject = null;
+          remoteRenderer.srcObject = stream;
+          
+          if (event.track.kind == 'video') {
+            remoteVideoEnabled = true;
+          }
+          if (!isConnected) _onUserJoined();
+          notify();
+        } else {
+          debugPrint("📡 WebRTC: onTrack event with empty streams. Manually adding track.");
+          if (remoteStream == null) {
+            // 🔹 Asynchronously create a brand new container stream for unified-plan compatibility
+            final newStream = await createLocalMediaStream('remote_stream');
+            remoteStream = newStream;
+            remoteRenderer.srcObject = newStream;
+          }
+          
+          remoteStream!.addTrack(event.track);
+          
+          // 🔹 Force re-binding of the native renderer by re-assigning srcObject
+          remoteRenderer.srcObject = null;
+          remoteRenderer.srcObject = remoteStream;
+          
           if (event.track.kind == 'video') {
             remoteVideoEnabled = true;
           }
@@ -176,7 +225,16 @@ class CallManager {
 
       peerConnection!.onAddStream = (MediaStream stream) {
         debugPrint("📡 WebRTC: onAddStream event fired - remote stream added!");
+        stream.getTracks().forEach((track) {
+          track.enabled = true; // 🔹 Ensure all tracks in the stream are enabled!
+        });
+        
+        remoteStream = stream;
+        
+        // 🔹 Force re-binding of the native renderer by re-assigning srcObject
+        remoteRenderer.srcObject = null;
         remoteRenderer.srcObject = stream;
+        
         remoteVideoEnabled = true;
         if (!isConnected) _onUserJoined();
         notify();
@@ -321,12 +379,12 @@ class CallManager {
     heartbeatTimer?.cancel();
     heartbeatTimer = null;
   }
-  }
 
   void _onWsMessage(dynamic message) async {
-    final data = jsonDecode(message);
-    final type = data['type'];
-    final payload = data['data'];
+    try {
+      final data = jsonDecode(message);
+      final type = data['type'];
+      final payload = data['data'];
 
     switch (type) {
       case 'caller_ready':
@@ -392,8 +450,13 @@ class CallManager {
         notify();
         break;
       case 'end_call':
-        endCall();
+        if (roomId == payload['room_id']) {
+          endCall();
+        }
         break;
+    }
+    } catch (e, stacktrace) {
+      debugPrint("❌ CallManager WebRTC Error in _onWsMessage: $e\n$stacktrace");
     }
   }
 
@@ -529,6 +592,9 @@ class CallManager {
     
     SignalingService.closeWebSocket();
     localStream?.getTracks().forEach((t) => t.stop());
+    localStream = null;
+    remoteStream = null;
+    localRenderer.srcObject = null;
     remoteRenderer.srcObject = null;
     peerConnection?.close();
     peerConnection = null;
