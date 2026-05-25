@@ -19,6 +19,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   ChewieController? _chewieController;
   bool _isPlayerReady = false;
   bool _viewIncremented = false;
+  String? _errorMessage;
   
   late VideoModel _currentVideo;
   final VideoApiService _videoApiService = VideoApiService();
@@ -55,6 +56,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _initializePlayer() async {
+    setState(() {
+      _isPlayerReady = false;
+      _errorMessage = null;
+    });
     try {
       final url = widget.video.streamUrl.isNotEmpty 
           ? widget.video.streamUrl 
@@ -93,6 +98,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
     } catch (e) {
       debugPrint("Error initializing video player: $e");
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+        });
+      }
     }
   }
 
@@ -190,9 +200,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             color: Colors.black,
             width: double.infinity,
             height: MediaQuery.of(context).size.width * (9 / 16),
-            child: _isPlayerReady && _chewieController != null
-                ? Chewie(controller: _chewieController!)
-                : const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor)),
+            child: _errorMessage != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red, size: 36),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Error: $_errorMessage",
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.secondaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                            onPressed: _initializePlayer,
+                            child: const Text("Retry"),
+                          )
+                        ],
+                      ),
+                    ),
+                  )
+                : _isPlayerReady && _chewieController != null
+                    ? Chewie(controller: _chewieController!)
+                    : const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor)),
           ),
           
           // Video Details, Reactions, and Comments
