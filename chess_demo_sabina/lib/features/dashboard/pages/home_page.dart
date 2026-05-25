@@ -4,6 +4,7 @@ import './dashboard_page.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../profile/pages/users_list_page.dart';
 import '../../chat/pages/conversations_page.dart';
+import '../../video_playlist/presentation/screens/video_library_screen.dart';
 import '../../../core/utils/color_utils.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import '../../chat/services/chat_service.dart';
@@ -25,6 +26,7 @@ class _HomePageState extends State<HomePage> {
 
   final List<Widget> _pages = [
     const DashboardPage(),
+    const VideoLibraryScreen(),
     const UsersListPage(),
     const ConversationsPage(),
     const ProfilePage(),
@@ -114,6 +116,10 @@ class _HomePageState extends State<HomePage> {
                 const BottomNavigationBarItem(
                   icon: Icon(Icons.home_rounded),
                   label: 'Home',
+                ),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.play_circle_fill_rounded),
+                  label: 'Videos',
                 ),
                 const BottomNavigationBarItem(
                   icon: Icon(Icons.people_rounded),

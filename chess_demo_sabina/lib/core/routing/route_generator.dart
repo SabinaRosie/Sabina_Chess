@@ -16,6 +16,9 @@ import '../../features/game/pages/live_game_page.dart';
 import '../../features/game/pages/game_invitation_screen.dart';
 import '../../features/game/pages/challenge_accepted_page.dart';
 import '../../features/game/pages/game_invitation_waiting_screen.dart';
+import '../../features/video_playlist/presentation/screens/video_library_screen.dart';
+import '../../features/video_playlist/presentation/screens/video_player_screen.dart';
+import '../../features/video_playlist/models/video_model.dart';
 import './route_const.dart';
 
 class RouteGenerator {
@@ -120,6 +123,13 @@ class RouteGenerator {
             opponentUsername: args['opponentUsername'],
           ),
         );
+
+      case Routes.videoLibraryRoute:
+        return MaterialPageRoute(builder: (_) => const VideoLibraryScreen());
+
+      case Routes.videoPlayerRoute:
+        final video = settings.arguments as VideoModel;
+        return MaterialPageRoute(builder: (_) => VideoPlayerScreen(video: video));
 
       default:
         return MaterialPageRoute(
