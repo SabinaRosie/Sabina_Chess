@@ -20,3 +20,13 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# ExoPlayer / Android Media3 rules
+-keep class com.google.android.exoplayer2.** { *; }
+-dontwarn com.google.android.exoplayer2.**
+-keep class androidx.media3.** { *; }
+-dontwarn androidx.media3.**
+
+# Flutter Video Player plugin
+-keep class io.flutter.plugins.videoplayer.** { *; }
+
