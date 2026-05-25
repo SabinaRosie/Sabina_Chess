@@ -83,8 +83,8 @@ class ChessForegroundService {
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'chess_foreground_service',
         channelName: 'Chess App Service',
-        channelImportance: NotificationChannelImportance.MAX,
-        priority: NotificationPriority.MAX,
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
         enableVibration: false,
         visibility: NotificationVisibility.VISIBILITY_PUBLIC,
       ),
