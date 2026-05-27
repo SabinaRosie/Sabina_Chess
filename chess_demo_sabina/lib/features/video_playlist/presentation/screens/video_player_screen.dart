@@ -20,10 +20,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isPlayerReady = false;
   bool _viewIncremented = false;
   String? _errorMessage;
-  
+  bool _useSampleVideo = false;
+
   late VideoModel _currentVideo;
   final VideoApiService _videoApiService = VideoApiService();
-  
+
   List<VideoCommentModel> _comments = [];
   bool _isLoadingComments = true;
   final TextEditingController _commentController = TextEditingController();
@@ -61,13 +62,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _errorMessage = null;
     });
     try {
-      final url = widget.video.streamUrl.isNotEmpty 
-          ? widget.video.streamUrl 
-          : widget.video.videoUrl;
+      final url = _useSampleVideo
+          ? "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+          : (widget.video.streamUrl.isNotEmpty
+              ? widget.video.streamUrl
+              : widget.video.videoUrl);
 
       _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url));
       await _videoPlayerController!.initialize();
-      
+
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController!,
         autoPlay: true,
@@ -84,13 +87,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
 
       _videoPlayerController!.addListener(_videoListener);
-      
+
       setState(() {
         _isPlayerReady = true;
       });
 
       // If backend has duration=0, send the real duration from the player
-      if (_currentVideo.duration == 0 && _videoPlayerController!.value.duration.inSeconds > 0) {
+      if (_currentVideo.duration == 0 &&
+          _videoPlayerController!.value.duration.inSeconds > 0) {
         _videoApiService.updateVideoDuration(
           _currentVideo.id,
           _videoPlayerController!.value.duration.inSeconds,
@@ -107,8 +111,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _videoListener() {
-    if (_videoPlayerController != null && _videoPlayerController!.value.isInitialized) {
-      if (_videoPlayerController!.value.position >= _videoPlayerController!.value.duration && _videoPlayerController!.value.duration > Duration.zero) {
+    if (_videoPlayerController != null &&
+        _videoPlayerController!.value.isInitialized) {
+      if (_videoPlayerController!.value.position >=
+              _videoPlayerController!.value.duration &&
+          _videoPlayerController!.value.duration > Duration.zero) {
         if (!_viewIncremented) {
           _viewIncremented = true;
           _videoApiService.getVideoDetail(_currentVideo.id);
@@ -120,7 +127,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _loadComments() async {
     setState(() => _isLoadingComments = true);
     final token = await ApiService.getValidToken();
-    final comments = await _videoApiService.getVideoComments(_currentVideo.id, token: token);
+    final comments = await _videoApiService.getVideoComments(
+      _currentVideo.id,
+      token: token,
+    );
     if (mounted) {
       setState(() {
         _comments = comments;
@@ -136,7 +146,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() => _isSubmittingComment = true);
     final token = await ApiService.getValidToken();
     if (token != null) {
-      final newComment = await _videoApiService.addComment(_currentVideo.id, text, token);
+      final newComment = await _videoApiService.addComment(
+        _currentVideo.id,
+        text,
+        token,
+      );
       if (newComment != null && mounted) {
         setState(() {
           _comments.insert(0, newComment);
@@ -157,7 +171,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _toggleReaction(String reactionType) async {
     final token = await ApiService.getValidToken();
     if (token != null) {
-      final updatedVideo = await _videoApiService.toggleReaction(_currentVideo.id, reactionType, token);
+      final updatedVideo = await _videoApiService.toggleReaction(
+        _currentVideo.id,
+        reactionType,
+        token,
+      );
       if (updatedVideo != null && mounted) {
         setState(() {
           _currentVideo = updatedVideo;
@@ -165,9 +183,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please login to react')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Please login to react')));
       }
     }
   }
@@ -207,34 +225,69 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 36),
-                          const SizedBox(height: 8),
-                          Text(
-                            "Error: $_errorMessage",
-                            style: const TextStyle(color: Colors.white70, fontSize: 12),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.red,
+                            size: 36,
                           ),
                           const SizedBox(height: 8),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.secondaryColor,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                           Text(
+                            "Error: $_errorMessage",
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
                             ),
-                            onPressed: _initializePlayer,
-                            child: const Text("Retry"),
-                          )
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.secondaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                onPressed: _initializePlayer,
+                                child: const Text("Retry"),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blueGrey,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _useSampleVideo = true;
+                                  });
+                                  _initializePlayer();
+                                },
+                                child: const Text("Test Sample Video"),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
                   )
                 : _isPlayerReady && _chewieController != null
-                    ? Chewie(controller: _chewieController!)
-                    : const Center(child: CircularProgressIndicator(color: AppColors.secondaryColor)),
+                ? Chewie(controller: _chewieController!)
+                : const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.secondaryColor,
+                    ),
+                  ),
           ),
-          
+
           // Video Details, Reactions, and Comments
           Expanded(
             child: SingleChildScrollView(
@@ -253,25 +306,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   const SizedBox(height: 8),
                   Text(
                     "${_currentVideo.views} Views",
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   if (_currentVideo.description.isNotEmpty) ...[
                     Text(
                       _currentVideo.description,
-                      style: const TextStyle(color: Colors.white70, height: 1.5),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        height: 1.5,
+                      ),
                     ),
                     const SizedBox(height: 24),
                   ],
-                  
+
                   // Reactions Row
                   _buildReactionsRow(),
-                  
+
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16.0),
                     child: Divider(color: Colors.white24),
                   ),
-                  
+
                   // Comments Section
                   const Text(
                     "Comments",
@@ -282,12 +340,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Add Comment Input
                   _buildCommentInput(),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Comments List
                   _buildCommentsList(),
                 ],
@@ -306,21 +364,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         children: _reactionIcons.keys.map((reactionKey) {
           final isUserReaction = _currentVideo.userReaction == reactionKey;
           final count = _currentVideo.reactionCounts[reactionKey] ?? 0;
-          
+
           return Padding(
             padding: const EdgeInsets.only(right: 12.0),
             child: GestureDetector(
               onTap: () => _toggleReaction(reactionKey),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
-                  color: isUserReaction 
-                      ? (_reactionColors[reactionKey] ?? AppColors.secondaryColor).withValues(alpha: 0.2)
+                  color: isUserReaction
+                      ? (_reactionColors[reactionKey] ??
+                                AppColors.secondaryColor)
+                            .withValues(alpha: 0.2)
                       : AppColors.surfaceColor.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isUserReaction 
-                        ? (_reactionColors[reactionKey] ?? AppColors.secondaryColor)
+                    color: isUserReaction
+                        ? (_reactionColors[reactionKey] ??
+                              AppColors.secondaryColor)
                         : Colors.white10,
                   ),
                 ),
@@ -330,8 +394,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     Icon(
                       _reactionIcons[reactionKey],
                       size: 18,
-                      color: isUserReaction 
-                          ? (_reactionColors[reactionKey] ?? AppColors.secondaryColor)
+                      color: isUserReaction
+                          ? (_reactionColors[reactionKey] ??
+                                AppColors.secondaryColor)
                           : Colors.white54,
                     ),
                     if (count > 0) ...[
@@ -339,14 +404,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       Text(
                         count.toString(),
                         style: TextStyle(
-                          color: isUserReaction 
-                              ? (_reactionColors[reactionKey] ?? AppColors.secondaryColor)
+                          color: isUserReaction
+                              ? (_reactionColors[reactionKey] ??
+                                    AppColors.secondaryColor)
                               : Colors.white70,
-                          fontWeight: isUserReaction ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isUserReaction
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                           fontSize: 14,
                         ),
                       ),
-                    ]
+                    ],
                   ],
                 ),
               ),
@@ -373,7 +441,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               decoration: const InputDecoration(
                 hintText: "Add a comment...",
                 hintStyle: TextStyle(color: Colors.white38),
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 border: InputBorder.none,
               ),
             ),
@@ -392,7 +463,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ? const SizedBox(
                     width: 24,
                     height: 24,
-                    child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      color: Colors.black,
+                      strokeWidth: 2,
+                    ),
                   )
                 : const Icon(Icons.send_rounded, color: Colors.black, size: 24),
           ),
@@ -403,12 +477,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Widget _buildCommentsList() {
     if (_isLoadingComments) {
-      return const Center(child: Padding(
-        padding: EdgeInsets.all(20.0),
-        child: CircularProgressIndicator(color: AppColors.secondaryColor),
-      ));
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(20.0),
+          child: CircularProgressIndicator(color: AppColors.secondaryColor),
+        ),
+      );
     }
-    
+
     if (_comments.isEmpty) {
       return Center(
         child: Padding(
@@ -420,7 +496,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ),
       );
     }
-    
+
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -436,8 +512,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 backgroundColor: AppColors.surfaceColor,
                 radius: 18,
                 child: Text(
-                  comment.userName.isNotEmpty ? comment.userName[0].toUpperCase() : 'U',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  comment.userName.isNotEmpty
+                      ? comment.userName[0].toUpperCase()
+                      : 'U',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -468,7 +549,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     const SizedBox(height: 4),
                     Text(
                       comment.text,
-                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
@@ -479,13 +563,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       },
     );
   }
-  
+
   String _formatDate(String dateStr) {
     try {
       final date = DateTime.parse(dateStr);
       final now = DateTime.now();
       final difference = now.difference(date);
-      
+
       if (difference.inDays > 7) {
         return "${date.day}/${date.month}/${date.year}";
       } else if (difference.inDays > 0) {

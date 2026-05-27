@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:fvp/fvp.dart' as fvp;
 import './core/routing/route_const.dart';
 import './core/routing/route_generator.dart';
 import './core/services/notification_service.dart';
@@ -18,6 +19,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  fvp.registerWith();
   
   // 🔹 Initialize Foreground Service (Sticky Notification)
   await ChessForegroundService.initService();

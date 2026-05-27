@@ -6,6 +6,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/routing/route_const.dart';
 import '../../../core/routing/route_generator.dart';
 import '../../../core/utils/color_utils.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -142,6 +143,89 @@ class _ProfilePageState extends State<ProfilePage>
         ],
       ),
     );
+  }
+
+  Future<void> _checkForUpdates() async {
+    // Show a loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        content: const Row(
+          children: [
+            CircularProgressIndicator(color: AppColors.secondaryColor),
+            SizedBox(width: 20),
+            Text('Checking for updates...', style: TextStyle(color: AppColors.textPrimary)),
+          ],
+        ),
+      ),
+    );
+
+    // Simulate network delay for checking update
+    await Future.delayed(const Duration(seconds: 2));
+
+    // Close the loading dialog
+    if (mounted) {
+      Navigator.pop(context);
+      
+      // Show the update available popup
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surfaceColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: AppColors.secondaryColor.withOpacity(0.3)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.system_update_rounded, color: AppColors.secondaryColor, size: 28),
+              SizedBox(width: 10),
+              Text('Update Available', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: const Text(
+            'An updated version of the app is available on APKPure. Do you want to update to the latest version?',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Later',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.secondaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                // Open APKPure URL
+                final url = Uri.parse('https://m.apkpure.com/search?q=com.sabina.chessdemo');
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                } else {
+                  if (mounted) {
+                    _showErrorDialog(context, "Could not open the update link.");
+                  }
+                }
+              },
+              child: const Text('Update Now'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
@@ -508,6 +592,14 @@ class _ProfilePageState extends State<ProfilePage>
                 "Change Password feature will be available in the next update!",
               );
             },
+          ),
+          const SizedBox(height: 12),
+          _actionTile(
+            icon: Icons.system_update_rounded,
+            title: 'Update App',
+            subtitle: 'Check for the latest version on APKPure',
+            iconColor: const Color(0xFF4caf50), // Green color for update
+            onTap: _checkForUpdates,
           ),
           const SizedBox(height: 12),
           _actionTile(
