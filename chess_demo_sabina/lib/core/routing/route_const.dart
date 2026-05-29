@@ -18,4 +18,6 @@ class Routes {
   static const String invitationWaitingRoute = "/invitation-waiting";
   static const String videoLibraryRoute = "/video-library";
   static const String videoPlayerRoute = "/video-player";
+  static const String selfChatRoute = "/self-chat";
+  static const String digitalTwinCallRoute = "/digital-twin-call";
 }

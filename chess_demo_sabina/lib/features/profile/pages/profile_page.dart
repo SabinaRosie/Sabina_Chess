@@ -554,32 +554,21 @@ class _ProfilePageState extends State<ProfilePage>
             },
           ),
           const SizedBox(height: 28),
-          _sectionTitle('Preferences'),
+          _sectionTitle('Account'),
           const SizedBox(height: 14),
-          _settingsTile(
-            icon: Icons.volume_up_rounded,
-            title: 'Sound Effects',
-            subtitle: 'Play sounds during the game',
-            value: _soundEnabled,
-            onChanged: (val) async {
-              setState(() => _soundEnabled = val);
-              await _saveSetting('soundEnabled', val);
+          _actionTile(
+            icon: Icons.mic_rounded,
+            title: 'Talk with yourself',
+            subtitle: 'Train an AI to use your voice',
+            iconColor: const Color(0xFFb39ddb), // Purple color
+            onTap: () {
+              RouteGenerator.navigateToPage(
+                context,
+                Routes.selfChatRoute,
+              );
             },
           ),
           const SizedBox(height: 12),
-          _settingsTile(
-            icon: Icons.notifications_rounded,
-            title: 'Notifications',
-            subtitle: 'Receive game updates and alerts',
-            value: _notificationsEnabled,
-            onChanged: (val) async {
-              setState(() => _notificationsEnabled = val);
-              await _saveSetting('notificationsEnabled', val);
-            },
-          ),
-          const SizedBox(height: 28),
-          _sectionTitle('Account'),
-          const SizedBox(height: 14),
           _actionTile(
             icon: Icons.lock_reset_rounded,
             title: 'Change Password',
