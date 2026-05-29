@@ -19,6 +19,8 @@ import '../../features/game/pages/game_invitation_waiting_screen.dart';
 import '../../features/video_playlist/presentation/screens/video_library_screen.dart';
 import '../../features/video_playlist/presentation/screens/video_player_screen.dart';
 import '../../features/video_playlist/models/video_model.dart';
+import '../../features/ai_chat/pages/self_chat_screen.dart';
+import '../../features/ai_chat/pages/digital_twin_call_screen.dart';
 import './route_const.dart';
 
 class RouteGenerator {
@@ -130,6 +132,12 @@ class RouteGenerator {
       case Routes.videoPlayerRoute:
         final video = settings.arguments as VideoModel;
         return MaterialPageRoute(builder: (_) => VideoPlayerScreen(video: video));
+
+      case Routes.selfChatRoute:
+        return MaterialPageRoute(builder: (_) => const SelfChatScreen());
+
+      case Routes.digitalTwinCallRoute:
+        return MaterialPageRoute(builder: (_) => const DigitalTwinCallScreen());
 
       default:
         return MaterialPageRoute(

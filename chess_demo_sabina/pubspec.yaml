@@ -56,6 +56,10 @@ dependencies:
   cached_network_image: ^3.4.1
   chewie: ^1.13.1
   fvp: ^0.37.0
+  record: ^6.2.1
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  speech_to_text: ^7.0.0
 
 dev_dependencies:
   flutter_test:
