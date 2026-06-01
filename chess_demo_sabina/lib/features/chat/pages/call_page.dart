@@ -31,7 +31,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
   final AudioPlayer _audioPlayer = AudioPlayer();
   late AnimationController _pulseController;
   
-  static const String ringingUrl = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
+  static const String ringingUrl = 'https://www.soundjay.com/phone/ringtone-1.mp3';
   static const String beepUrl = 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3';
  
   StreamSubscription? _updateSubscription;
