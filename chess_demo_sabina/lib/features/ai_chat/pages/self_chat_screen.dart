@@ -167,9 +167,9 @@ class _SelfChatScreenState extends State<SelfChatScreen>
     try {
       if (await _recorder.hasPermission()) {
         final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/sample_${_sampleCount + 1}.m4a';
+        final path = '${directory.path}/sample_${_sampleCount + 1}.wav';
 
-        await _recorder.start(const RecordConfig(), path: path);
+        await _recorder.start(const RecordConfig(encoder: AudioEncoder.wav), path: path);
         setState(() => _isRecording = true);
       }
     } catch (e) {
