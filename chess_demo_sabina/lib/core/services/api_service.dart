@@ -487,4 +487,41 @@ class ApiService {
       return {'success': false, 'error': _formatError(e)};
     }
   }
+
+  static Future<Map<String, dynamic>> saveCallRecording({
+    required String? callerUsername,
+    required String? calleeUsername,
+    required String callType,
+    required String filePath,
+  }) async {
+    final token = await getValidToken();
+    if (token == null) return {'success': false, 'error': 'No access token'};
+
+    final url = Uri.parse('${AppConstants.baseUrl}/call/recordings/save');
+    try {
+      final request = http.MultipartRequest('POST', url);
+      request.headers['Authorization'] = 'Bearer $token';
+      
+      if (callerUsername != null) {
+        request.fields['caller_username'] = callerUsername;
+      }
+      if (calleeUsername != null) {
+        request.fields['callee_username'] = calleeUsername;
+      }
+      request.fields['call_type'] = callType;
+      
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'recording_file',
+          filePath,
+        ),
+      );
+
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 45));
+      final response = await http.Response.fromStream(streamedResponse);
+      return _handleResponse(response, 'Failed to upload recording');
+    } catch (e) {
+      return {'success': false, 'error': _formatError(e)};
+    }
+  }
 }

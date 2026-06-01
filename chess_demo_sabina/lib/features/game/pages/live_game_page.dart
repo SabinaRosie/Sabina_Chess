@@ -122,6 +122,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
       if (mounted) setState(() {});
     });
 
+    _mediaService.isRecordingNotifier.addListener(() {
+      if (mounted) {
+        setState(() {
+          isRecording = _mediaService.isRecordingNotifier.value;
+        });
+      }
+    });
+
     _videoRequestSub = _mediaService.onVideoRequest.listen((_) {
       _showVideoRequestDialog();
     });
@@ -528,11 +536,18 @@ class _LiveGamePageState extends State<LiveGamePage> {
                     isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
                     color: isRecording ? Colors.red : Colors.white54,
                   ),
-                  onPressed: () {
-                    setState(() => isRecording = !isRecording);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(isRecording ? 'Recording Started' : 'Recording Saved to Database')),
-                    );
+                  onPressed: () async {
+                    if (_mediaService.isRecordingNotifier.value) {
+                      await _mediaService.stopRecording(widget.opponentUsername);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Recording Saved to Database')),
+                      );
+                    } else {
+                      await _mediaService.startRecording();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Recording Started')),
+                      );
+                    }
                   },
                 ),
             ],
@@ -688,11 +703,18 @@ class _LiveGamePageState extends State<LiveGamePage> {
                         _buildCompactControl(
                           icon: isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
                           isActive: isRecording,
-                          onTap: () {
-                            setState(() => isRecording = !isRecording);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(isRecording ? 'Recording Started' : 'Recording Saved to Database')),
-                            );
+                          onTap: () async {
+                            if (_mediaService.isRecordingNotifier.value) {
+                              await _mediaService.stopRecording(widget.opponentUsername);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Recording Saved to Database')),
+                              );
+                            } else {
+                              await _mediaService.startRecording();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Recording Started')),
+                              );
+                            }
                           },
                         ),
                       ],

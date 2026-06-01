@@ -39,7 +39,6 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   bool _renderersInitialized = false;
-  bool isRecording = false;
 
   Future<void> _initRenderers() async {
     await _localRenderer.initialize();
@@ -273,15 +272,20 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                     _actionBtn(Icons.cameraswitch, false, _callManager.switchCamera),
                   if (_callManager.isConnected)
                     _actionBtn(
-                      isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
-                      isRecording,
-                      () {
-                        setState(() {
-                          isRecording = !isRecording;
-                        });
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(isRecording ? 'Recording Started' : 'Recording Saved to Database')),
-                        );
+                      _callManager.isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
+                      _callManager.isRecording,
+                      () async {
+                        if (_callManager.isRecording) {
+                          await _callManager.stopRecording();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Recording Saved to Database')),
+                          );
+                        } else {
+                          await _callManager.startRecording();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Recording Started')),
+                          );
+                        }
                       }
                     ),
                 ],

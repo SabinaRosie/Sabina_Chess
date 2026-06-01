@@ -4,8 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/utils/const.dart';
 import '../../../core/services/signaling_service.dart';
+import '../../../core/services/api_service.dart';
 
 class GameMediaService {
   WebSocketChannel? _channel;
@@ -17,6 +21,8 @@ class GameMediaService {
   final ValueNotifier<MediaStream?> localStreamNotifier = ValueNotifier<MediaStream?>(null);
   final ValueNotifier<bool> isOpponentMuted = ValueNotifier<bool>(false);
   final ValueNotifier<bool> isOpponentVideoEnabled = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> isRecordingNotifier = ValueNotifier<bool>(false);
+  AudioRecorder? _audioRecorder;
 
   final _videoRequestController = StreamController<void>.broadcast();
   Stream<void> get onVideoRequest => _videoRequestController.stream;
@@ -33,18 +39,51 @@ class GameMediaService {
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun2.l.google.com:19302'},
+      {'urls': 'stun:stun.relay.metered.ca:80'},
       {
-        'urls': [
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp',
-        ],
+        'urls': 'turn:global.relay.metered.ca:80',
+        'username': '709362ac5e79d7848563aaba',
+        'credential': '9kwUXSQwK6gbOJMm',
+      },
+      {
+        'urls': 'turn:global.relay.metered.ca:80?transport=tcp',
+        'username': '709362ac5e79d7848563aaba',
+        'credential': '9kwUXSQwK6gbOJMm',
+      },
+      {
+        'urls': 'turn:global.relay.metered.ca:443',
+        'username': '709362ac5e79d7848563aaba',
+        'credential': '9kwUXSQwK6gbOJMm',
+      },
+      {
+        'urls': 'turns:global.relay.metered.ca:443?transport=tcp',
+        'username': '709362ac5e79d7848563aaba',
+        'credential': '9kwUXSQwK6gbOJMm',
+      },
+      {
+        'urls': 'turn:openrelay.metered.ca:80',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turn:openrelay.metered.ca:443',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turns:openrelay.metered.ca:443',
         'username': 'openrelayproject',
         'credential': 'openrelayproject',
       },
     ],
     'iceCandidatePoolSize': 20,
     'sdpSemantics': 'unified-plan',
+    'iceTransportPolicy': 'all',
   };
 
   Future<void> connect(String gameId, String token, bool isCaller) async {
@@ -320,6 +359,11 @@ class GameMediaService {
   }
 
   void dispose() {
+    if (isRecordingNotifier.value) {
+      _audioRecorder?.stop().then((path) {
+        _audioRecorder?.dispose();
+      });
+    }
     _localStream?.dispose();
     _remoteStream?.dispose();
     _peerConnection?.dispose();
@@ -327,5 +371,61 @@ class GameMediaService {
     _videoRequestController.close();
     _videoResponseController.close();
     debugPrint("GAME_MEDIA_WEBRTC: Disposed");
+  }
+
+  Future<void> startRecording() async {
+    if (isRecordingNotifier.value) return;
+    try {
+      _audioRecorder = AudioRecorder();
+      if (await _audioRecorder!.hasPermission()) {
+        final directory = await getTemporaryDirectory();
+        final path = '${directory.path}/game_${_gameId}_${DateTime.now().millisecondsSinceEpoch}.wav';
+        await _audioRecorder!.start(
+          const RecordConfig(encoder: AudioEncoder.wav),
+          path: path,
+        );
+        isRecordingNotifier.value = true;
+        debugPrint("GameMediaService: Recording started at path: $path");
+      } else {
+        debugPrint("GameMediaService: Microphone permission denied for recording");
+      }
+    } catch (e) {
+      debugPrint("GameMediaService: Error starting recording: $e");
+    }
+  }
+
+  Future<void> stopRecording(String? opponentUsername) async {
+    if (!isRecordingNotifier.value || _audioRecorder == null) return;
+    try {
+      final path = await _audioRecorder!.stop();
+      isRecordingNotifier.value = false;
+      
+      if (path != null) {
+        debugPrint("GameMediaService: Recording stopped. Saved locally at $path");
+        final currentUser = await _getCurrentUsername();
+        // Upload to backend
+        final response = await ApiService.saveCallRecording(
+          callerUsername: _isCaller ? currentUser : opponentUsername,
+          calleeUsername: _isCaller ? opponentUsername : currentUser,
+          callType: 'game_call',
+          filePath: path,
+        );
+        debugPrint("GameMediaService: Save recording response: $response");
+      }
+      
+      await _audioRecorder!.dispose();
+      _audioRecorder = null;
+    } catch (e) {
+      debugPrint("GameMediaService: Error stopping recording: $e");
+    }
+  }
+
+  Future<String?> _getCurrentUsername() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('username');
+    } catch (_) {
+      return null;
+    }
   }
 }

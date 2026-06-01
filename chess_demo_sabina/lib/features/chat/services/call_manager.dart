@@ -4,7 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/services/signaling_service.dart';
+import '../../../core/services/api_service.dart';
 import '../widgets/call_overlay_widget.dart';
 import '../../../core/routing/route_const.dart';
 import '../../../core/routing/route_generator.dart';
@@ -19,6 +23,9 @@ class CallManager {
   MediaStream? remoteStream;
   RTCVideoRenderer localRenderer = RTCVideoRenderer();
   RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
+
+  AudioRecorder? _audioRecorder;
+  bool isRecording = false;
 
   bool isMuted = false;
   bool isCameraOff = false;
@@ -154,7 +161,7 @@ class CallManager {
       final iceConfig = {
         'iceServers': servers,
         'iceCandidatePoolSize': 10,
-        'bundlePolicy': 'balanced',
+        'bundlePolicy': 'max-bundle',
         'rtcpMuxPolicy': 'require',
         'sdpSemantics': 'unified-plan',
         'iceTransportPolicy': 'all',
@@ -571,6 +578,9 @@ class CallManager {
   }
 
   void endCall() {
+    if (isRecording) {
+      stopRecording();
+    }
     _hideOverlay();
     wsSubscription?.cancel();
     wsSubscription = null;
@@ -605,5 +615,63 @@ class CallManager {
     isMinimized = false;
     _hasAttemptedIceRestart = false;
     notify();
+  }
+
+  Future<void> startRecording() async {
+    if (isRecording) return;
+    try {
+      _audioRecorder = AudioRecorder();
+      if (await _audioRecorder!.hasPermission()) {
+        final directory = await getTemporaryDirectory();
+        final path = '${directory.path}/call_${roomId}_${DateTime.now().millisecondsSinceEpoch}.wav';
+        await _audioRecorder!.start(
+          const RecordConfig(encoder: AudioEncoder.wav),
+          path: path,
+        );
+        isRecording = true;
+        debugPrint("CallManager: Call recording started at path: $path");
+        notify();
+      } else {
+        debugPrint("CallManager: Microphone permission denied for call recording");
+      }
+    } catch (e) {
+      debugPrint("CallManager: Error starting call recording: $e");
+    }
+  }
+
+  Future<void> stopRecording() async {
+    if (!isRecording || _audioRecorder == null) return;
+    try {
+      final path = await _audioRecorder!.stop();
+      isRecording = false;
+      notify();
+      
+      if (path != null) {
+        debugPrint("CallManager: Call recording stopped. Saved locally at $path");
+        // Upload to backend
+        final currentUser = await _getCurrentUsername();
+        final response = await ApiService.saveCallRecording(
+          callerUsername: isCaller == true ? currentUser : remoteUsername,
+          calleeUsername: isCaller == true ? remoteUsername : currentUser,
+          callType: callType ?? 'unknown',
+          filePath: path,
+        );
+        debugPrint("CallManager: Save call recording response: $response");
+      }
+      
+      await _audioRecorder!.dispose();
+      _audioRecorder = null;
+    } catch (e) {
+      debugPrint("CallManager: Error stopping call recording: $e");
+    }
+  }
+
+  Future<String?> _getCurrentUsername() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('username');
+    } catch (_) {
+      return null;
+    }
   }
 }

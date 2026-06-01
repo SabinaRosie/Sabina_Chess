@@ -105,39 +105,53 @@ class SignalingService {
     } catch (e) {
       debugPrint("ICE Servers Error (using fallback): $e");
     }
-    // 🔹 Reliable fallback with TURN servers for cross-network calls
+    // 🔹 Reliable fallback with Open Relay and User TURN servers for cross-network calls
     return [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun2.l.google.com:19302'},
       {'urls': 'stun:stun3.l.google.com:19302'},
       {'urls': 'stun:stun4.l.google.com:19302'},
-      {'urls': 'stun:stun.cloudflare.com:3478'},
-      {'urls': 'stun:stun.services.mozilla.com'},
+      {'urls': 'stun:stun.relay.metered.ca:80'},
       {
-        'urls': 'turn:sabina-chess.metered.live:80',
+        'urls': 'turn:global.relay.metered.ca:80',
         'username': '709362ac5e79d7848563aaba',
         'credential': '9kwUXSQwK6gbOJMm',
       },
       {
-        'urls': 'turn:sabina-chess.metered.live:443',
+        'urls': 'turn:global.relay.metered.ca:80?transport=tcp',
         'username': '709362ac5e79d7848563aaba',
         'credential': '9kwUXSQwK6gbOJMm',
       },
       {
-        'urls': 'turn:sabina-chess.metered.live:3478',
+        'urls': 'turn:global.relay.metered.ca:443',
         'username': '709362ac5e79d7848563aaba',
         'credential': '9kwUXSQwK6gbOJMm',
       },
       {
-        'urls': 'turns:sabina-chess.metered.live:443?transport=tcp',
+        'urls': 'turns:global.relay.metered.ca:443?transport=tcp',
         'username': '709362ac5e79d7848563aaba',
         'credential': '9kwUXSQwK6gbOJMm',
       },
       {
-        'urls': 'turns:sabina-chess.metered.live:3478?transport=tcp',
-        'username': '709362ac5e79d7848563aaba',
-        'credential': '9kwUXSQwK6gbOJMm',
+        'urls': 'turn:openrelay.metered.ca:80',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turn:openrelay.metered.ca:443',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turns:openrelay.metered.ca:443',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
       },
     ];
   }
