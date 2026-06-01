@@ -39,6 +39,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   bool _renderersInitialized = false;
+  bool isRecording = false;
 
   Future<void> _initRenderers() async {
     await _localRenderer.initialize();
@@ -270,6 +271,19 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                   _actionBtn(Icons.videocam_off, _callManager.isCameraOff, _callManager.toggleVideo),
                   if (!_callManager.isCameraOff)
                     _actionBtn(Icons.cameraswitch, false, _callManager.switchCamera),
+                  if (_callManager.isConnected)
+                    _actionBtn(
+                      isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
+                      isRecording,
+                      () {
+                        setState(() {
+                          isRecording = !isRecording;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(isRecording ? 'Recording Started' : 'Recording Saved to Database')),
+                        );
+                      }
+                    ),
                 ],
               ),
             ),

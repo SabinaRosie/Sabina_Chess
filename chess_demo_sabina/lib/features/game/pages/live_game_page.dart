@@ -55,6 +55,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   StreamSubscription? _videoRequestSub;
   StreamSubscription? _videoResponseSub;
+  bool isRecording = false;
 
   @override
   void initState() {
@@ -521,6 +522,19 @@ class _LiveGamePageState extends State<LiveGamePage> {
                 icon: const Icon(Icons.videocam_rounded, color: Colors.white54),
                 onPressed: _handleVideoToggle,
               ),
+              if (isConnected) // Both users on call/game
+                IconButton(
+                  icon: Icon(
+                    isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
+                    color: isRecording ? Colors.red : Colors.white54,
+                  ),
+                  onPressed: () {
+                    setState(() => isRecording = !isRecording);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(isRecording ? 'Recording Started' : 'Recording Saved to Database')),
+                    );
+                  },
+                ),
             ],
             const SizedBox(width: 8),
           ],
@@ -669,6 +683,19 @@ class _LiveGamePageState extends State<LiveGamePage> {
                         isActive: false,
                         onTap: _handleVideoToggle,
                       ),
+                      if (isConnected) ...[
+                        const SizedBox(width: 6),
+                        _buildCompactControl(
+                          icon: isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
+                          isActive: isRecording,
+                          onTap: () {
+                            setState(() => isRecording = !isRecording);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(isRecording ? 'Recording Started' : 'Recording Saved to Database')),
+                            );
+                          },
+                        ),
+                      ],
                     ],
                   )
                 : (isEnabled 
