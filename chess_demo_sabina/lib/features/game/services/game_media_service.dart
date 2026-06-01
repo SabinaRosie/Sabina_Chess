@@ -5,7 +5,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:record/record.dart';
+import 'package:flutter_screen_recording/flutter_screen_recording.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../core/utils/const.dart';
 import '../../../core/services/signaling_service.dart';
@@ -22,7 +22,8 @@ class GameMediaService {
   final ValueNotifier<bool> isOpponentMuted = ValueNotifier<bool>(false);
   final ValueNotifier<bool> isOpponentVideoEnabled = ValueNotifier<bool>(false);
   final ValueNotifier<bool> isRecordingNotifier = ValueNotifier<bool>(false);
-  AudioRecorder? _audioRecorder;
+  DateTime? recordingStartTime;
+  int? lastRecordingDuration;
 
   final _videoRequestController = StreamController<void>.broadcast();
   Stream<void> get onVideoRequest => _videoRequestController.stream;
@@ -360,9 +361,7 @@ class GameMediaService {
 
   void dispose() {
     if (isRecordingNotifier.value) {
-      _audioRecorder?.stop().then((path) {
-        _audioRecorder?.dispose();
-      });
+      FlutterScreenRecording.stopRecordScreen;
     }
     _localStream?.dispose();
     _remoteStream?.dispose();
@@ -376,32 +375,40 @@ class GameMediaService {
   Future<void> startRecording() async {
     if (isRecordingNotifier.value) return;
     try {
-      _audioRecorder = AudioRecorder();
-      if (await _audioRecorder!.hasPermission()) {
-        final directory = await getTemporaryDirectory();
-        final path = '${directory.path}/game_${_gameId}_${DateTime.now().millisecondsSinceEpoch}.wav';
-        await _audioRecorder!.start(
-          const RecordConfig(encoder: AudioEncoder.wav),
-          path: path,
-        );
-        isRecordingNotifier.value = true;
-        debugPrint("GameMediaService: Recording started at path: $path");
+      final hasPermission = await Permission.storage.request().isGranted && 
+                            await Permission.microphone.request().isGranted;
+      
+      if (hasPermission) {
+        final title = 'game_${_gameId}_${DateTime.now().millisecondsSinceEpoch}';
+        final success = await FlutterScreenRecording.startRecordScreenAndAudio(title);
+        if (success) {
+          isRecordingNotifier.value = true;
+          recordingStartTime = DateTime.now();
+          lastRecordingDuration = null;
+          debugPrint("GameMediaService: Screen recording started: $title");
+        } else {
+          debugPrint("GameMediaService: Failed to start screen recording");
+        }
       } else {
-        debugPrint("GameMediaService: Microphone permission denied for recording");
+        debugPrint("GameMediaService: Permissions denied for screen recording");
       }
     } catch (e) {
-      debugPrint("GameMediaService: Error starting recording: $e");
+      debugPrint("GameMediaService: Error starting screen recording: $e");
     }
   }
 
   Future<void> stopRecording(String? opponentUsername) async {
-    if (!isRecordingNotifier.value || _audioRecorder == null) return;
+    if (!isRecordingNotifier.value) return;
     try {
-      final path = await _audioRecorder!.stop();
+      final path = await FlutterScreenRecording.stopRecordScreen;
       isRecordingNotifier.value = false;
+      if (recordingStartTime != null) {
+        lastRecordingDuration = DateTime.now().difference(recordingStartTime!).inSeconds;
+      }
+      recordingStartTime = null;
       
-      if (path != null) {
-        debugPrint("GameMediaService: Recording stopped. Saved locally at $path");
+      if (path != null && path.isNotEmpty) {
+        debugPrint("GameMediaService: Screen recording stopped. Saved locally at $path");
         final currentUser = await _getCurrentUsername();
         // Upload to backend
         final response = await ApiService.saveCallRecording(
@@ -410,13 +417,10 @@ class GameMediaService {
           callType: 'game_call',
           filePath: path,
         );
-        debugPrint("GameMediaService: Save recording response: $response");
+        debugPrint("GameMediaService: Save screen recording response: $response");
       }
-      
-      await _audioRecorder!.dispose();
-      _audioRecorder = null;
     } catch (e) {
-      debugPrint("GameMediaService: Error stopping recording: $e");
+      debugPrint("GameMediaService: Error stopping screen recording: $e");
     }
   }
 

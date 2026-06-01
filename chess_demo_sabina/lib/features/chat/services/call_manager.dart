@@ -5,8 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:record/record.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter_screen_recording/flutter_screen_recording.dart';
 import '../../../core/services/signaling_service.dart';
 import '../../../core/services/api_service.dart';
 import '../widgets/call_overlay_widget.dart';
@@ -24,8 +23,9 @@ class CallManager {
   RTCVideoRenderer localRenderer = RTCVideoRenderer();
   RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
 
-  AudioRecorder? _audioRecorder;
   bool isRecording = false;
+  DateTime? recordingStartTime;
+  int? lastRecordingDuration;
 
   bool isMuted = false;
   bool isCameraOff = false;
@@ -577,9 +577,9 @@ class CallManager {
     _overlayEntry = null;
   }
 
-  void endCall() {
+  Future<void> endCall() async {
     if (isRecording) {
-      stopRecording();
+      await stopRecording();
     }
     _hideOverlay();
     wsSubscription?.cancel();
@@ -620,34 +620,42 @@ class CallManager {
   Future<void> startRecording() async {
     if (isRecording) return;
     try {
-      _audioRecorder = AudioRecorder();
-      if (await _audioRecorder!.hasPermission()) {
-        final directory = await getTemporaryDirectory();
-        final path = '${directory.path}/call_${roomId}_${DateTime.now().millisecondsSinceEpoch}.wav';
-        await _audioRecorder!.start(
-          const RecordConfig(encoder: AudioEncoder.wav),
-          path: path,
-        );
-        isRecording = true;
-        debugPrint("CallManager: Call recording started at path: $path");
-        notify();
+      final hasPermission = await Permission.storage.request().isGranted && 
+                            await Permission.microphone.request().isGranted;
+      
+      if (hasPermission) {
+        final title = 'call_${roomId}_${DateTime.now().millisecondsSinceEpoch}';
+        final success = await FlutterScreenRecording.startRecordScreenAndAudio(title);
+        if (success) {
+          isRecording = true;
+          recordingStartTime = DateTime.now();
+          lastRecordingDuration = null;
+          debugPrint("CallManager: Screen recording started: $title");
+          notify();
+        } else {
+          debugPrint("CallManager: Failed to start screen recording");
+        }
       } else {
-        debugPrint("CallManager: Microphone permission denied for call recording");
+        debugPrint("CallManager: Permissions denied for screen recording");
       }
     } catch (e) {
-      debugPrint("CallManager: Error starting call recording: $e");
+      debugPrint("CallManager: Error starting screen recording: $e");
     }
   }
 
   Future<void> stopRecording() async {
-    if (!isRecording || _audioRecorder == null) return;
+    if (!isRecording) return;
     try {
-      final path = await _audioRecorder!.stop();
+      final path = await FlutterScreenRecording.stopRecordScreen;
       isRecording = false;
+      if (recordingStartTime != null) {
+        lastRecordingDuration = DateTime.now().difference(recordingStartTime!).inSeconds;
+      }
+      recordingStartTime = null;
       notify();
       
-      if (path != null) {
-        debugPrint("CallManager: Call recording stopped. Saved locally at $path");
+      if (path != null && path.isNotEmpty) {
+        debugPrint("CallManager: Screen recording stopped. Saved locally at $path");
         // Upload to backend
         final currentUser = await _getCurrentUsername();
         final response = await ApiService.saveCallRecording(
@@ -656,13 +664,10 @@ class CallManager {
           callType: callType ?? 'unknown',
           filePath: path,
         );
-        debugPrint("CallManager: Save call recording response: $response");
+        debugPrint("CallManager: Save screen recording response: $response");
       }
-      
-      await _audioRecorder!.dispose();
-      _audioRecorder = null;
     } catch (e) {
-      debugPrint("CallManager: Error stopping call recording: $e");
+      debugPrint("CallManager: Error stopping screen recording: $e");
     }
   }
 

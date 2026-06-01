@@ -156,6 +156,58 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
     return '$m:$s';
   }
 
+  /// Shows a premium "Recording Saved" popup dialog
+  void _showRecordingSavedDialog(int? durationSecs) {
+    final durStr = durationSecs != null ? _formatDuration(durationSecs) : "00:00";
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 28),
+            SizedBox(width: 10),
+            Text('Recording Saved', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.timer_rounded, color: AppColors.secondaryColor, size: 22),
+                  const SizedBox(width: 8),
+                  Text(durStr, style: const TextStyle(color: AppColors.secondaryColor, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Your screen recording has been saved successfully.',
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK', style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -222,8 +274,23 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                         style: const TextStyle(color: AppColors.secondaryColor, fontSize: 16, fontWeight: FontWeight.w500)
                       ),
                     ),
+                    if (_callManager.isRecording && _callManager.recordingStartTime != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _buildRecordingBadge(),
+                      ),
                   ],
                 ),
+              ),
+
+            // Recording indicator overlay for video calls
+            if (_callManager.isRecording && _callManager.recordingStartTime != null &&
+                _callManager.isConnected && _callManager.remoteVideoEnabled)
+              Positioned(
+                top: 50,
+                left: 0,
+                right: 0,
+                child: Center(child: _buildRecordingBadge()),
               ),
             
             // Local Video Preview
@@ -251,43 +318,94 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
 
             // Bottom Controls
             Positioned(
-              bottom: 50,
+              bottom: 40,
               left: 0,
               right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  _actionBtn(Icons.mic_off, _callManager.isMuted, _callManager.toggleMic),
-                  _actionBtn(Icons.volume_up, _callManager.isSpeakerOn, _callManager.toggleSpeaker),
-                  FloatingActionButton(
-                    onPressed: () {
-                      _callManager.endCall();
-                      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => CallEndedPage(remoteUsername: widget.remoteUsername, duration: _formatDuration(_callManager.callDuration))));
-                    },
-                    backgroundColor: Colors.red,
-                    child: const Icon(Icons.call_end, size: 30),
-                  ),
-                  _actionBtn(Icons.videocam_off, _callManager.isCameraOff, _callManager.toggleVideo),
-                  if (!_callManager.isCameraOff)
-                    _actionBtn(Icons.cameraswitch, false, _callManager.switchCamera),
-                  if (_callManager.isConnected)
-                    _actionBtn(
-                      _callManager.isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
-                      _callManager.isRecording,
-                      () async {
-                        if (_callManager.isRecording) {
-                          await _callManager.stopRecording();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Recording Saved to Database')),
-                          );
-                        } else {
-                          await _callManager.startRecording();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Recording Started')),
-                          );
-                        }
-                      }
+                  // Control buttons row
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
                     ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _actionBtn(
+                          _callManager.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                          _callManager.isMuted,
+                          _callManager.toggleMic,
+                          activeColor: const Color(0xFFFF6B6B),
+                          activeIconColor: Colors.white,
+                          label: _callManager.isMuted ? 'Unmute' : 'Mute',
+                        ),
+                        _actionBtn(
+                          Icons.volume_up_rounded,
+                          _callManager.isSpeakerOn,
+                          _callManager.toggleSpeaker,
+                          activeColor: const Color(0xFF4ECDC4),
+                          activeIconColor: Colors.white,
+                          label: 'Speaker',
+                        ),
+                        // End call - larger, prominent
+                        _endCallBtn(),
+                        _actionBtn(
+                          _callManager.isCameraOff ? Icons.videocam_off_rounded : Icons.videocam_rounded,
+                          !_callManager.isCameraOff,
+                          _callManager.toggleVideo,
+                          activeColor: const Color(0xFF45B7D1),
+                          activeIconColor: Colors.white,
+                          label: 'Camera',
+                        ),
+                        if (!_callManager.isCameraOff)
+                          _actionBtn(
+                            Icons.cameraswitch_rounded,
+                            false,
+                            _callManager.switchCamera,
+                            label: 'Flip',
+                          ),
+                        if (_callManager.isConnected)
+                          _actionBtn(
+                            _callManager.isRecording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
+                            _callManager.isRecording,
+                            () async {
+                              if (_callManager.isRecording) {
+                                await _callManager.stopRecording();
+                                if (mounted) {
+                                  _showRecordingSavedDialog(_callManager.lastRecordingDuration);
+                                }
+                              } else {
+                                await _callManager.startRecording();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Row(
+                                        children: [
+                                          Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Screen Recording Started'),
+                                        ],
+                                      ),
+                                      backgroundColor: const Color(0xFF2A2A3A),
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            activeColor: Colors.red,
+                            activeIconColor: Colors.white,
+                            label: _callManager.isRecording ? 'Stop' : 'Record',
+                          ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -297,13 +415,152 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
     );
   }
 
-  Widget _actionBtn(IconData icon, bool active, VoidCallback onTap) {
-    return FloatingActionButton(
-      mini: true, 
-      heroTag: null,
-      onPressed: onTap, 
-      backgroundColor: active ? AppColors.secondaryColor : Colors.white24, 
-      child: Icon(icon, color: active ? Colors.black : Colors.white)
+  /// Recording duration badge widget (reused in audio and video overlays)
+  Widget _buildRecordingBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.red.withOpacity(0.5)),
+        boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 12, spreadRadius: 1)],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.fiber_manual_record, color: Colors.red, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            "REC ${_formatDuration(DateTime.now().difference(_callManager.recordingStartTime!).inSeconds)}",
+            style: const TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// End call button with red glow
+  Widget _endCallBtn() {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.5), blurRadius: 20, spreadRadius: 4)],
+      ),
+      child: FloatingActionButton(
+        heroTag: null,
+        onPressed: () async {
+          final wasRecording = _callManager.isRecording;
+          final callDur = _callManager.callDuration;
+          await _callManager.endCall();
+          final recDur = _callManager.lastRecordingDuration;
+          if (mounted) {
+            if (wasRecording) {
+              // Show recording saved popup first, then navigate on dismiss
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => AlertDialog(
+                  backgroundColor: const Color(0xFF1E1E2C),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 28),
+                      SizedBox(width: 10),
+                      Text('Recording Saved', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.timer_rounded, color: AppColors.secondaryColor, size: 22),
+                            const SizedBox(width: 8),
+                            Text(
+                              recDur != null ? _formatDuration(recDur) : '00:00',
+                              style: const TextStyle(color: AppColors.secondaryColor, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Your screen recording was saved before the call ended.',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop(); // close dialog
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => CallEndedPage(remoteUsername: widget.remoteUsername, duration: _formatDuration(callDur))),
+                        );
+                      },
+                      child: const Text('OK', style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              );
+            } else {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => CallEndedPage(remoteUsername: widget.remoteUsername, duration: _formatDuration(callDur))),
+              );
+            }
+          }
+        },
+        backgroundColor: Colors.red,
+        elevation: 12,
+        child: const Icon(Icons.call_end_rounded, size: 28, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _actionBtn(IconData icon, bool active, VoidCallback onTap, {
+    Color activeColor = AppColors.secondaryColor,
+    Color activeIconColor = Colors.black,
+    String? label,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: active
+                ? [BoxShadow(color: activeColor.withOpacity(0.5), blurRadius: 14, spreadRadius: 1)]
+                : [],
+          ),
+          child: FloatingActionButton(
+            mini: true, 
+            heroTag: null,
+            onPressed: onTap, 
+            backgroundColor: active ? activeColor : Colors.white.withOpacity(0.12), 
+            elevation: active ? 6 : 0,
+            child: Icon(icon, color: active ? activeIconColor : Colors.white70, size: 22),
+          ),
+        ),
+        if (label != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              label,
+              style: TextStyle(color: active ? activeColor : Colors.white54, fontSize: 10, fontWeight: FontWeight.w500),
+            ),
+          ),
+      ],
     );
   }
 }

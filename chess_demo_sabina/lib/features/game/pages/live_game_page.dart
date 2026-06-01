@@ -520,6 +520,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
                 icon: Icon(
                   isMicMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
                   color: isMicMuted ? Colors.white54 : Colors.greenAccent,
+                  shadows: isMicMuted ? [] : [Shadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12)],
                 ),
                 onPressed: () {
                   setState(() => isMicMuted = !isMicMuted);
@@ -527,25 +528,84 @@ class _LiveGamePageState extends State<LiveGamePage> {
                 },
               ),
               IconButton(
-                icon: const Icon(Icons.videocam_rounded, color: Colors.white54),
+                icon: Icon(
+                  isVideoEnabled ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+                  color: isVideoEnabled ? Colors.cyanAccent : Colors.white54,
+                  shadows: isVideoEnabled ? [Shadow(color: Colors.cyanAccent.withOpacity(0.6), blurRadius: 12)] : [],
+                ),
                 onPressed: _handleVideoToggle,
               ),
               if (isConnected) // Both users on call/game
                 IconButton(
                   icon: Icon(
-                    isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
+                    isRecording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
                     color: isRecording ? Colors.red : Colors.white54,
+                    size: isRecording ? 30 : 24,
+                    shadows: isRecording ? [Shadow(color: Colors.red.withOpacity(0.8), blurRadius: 16)] : [],
                   ),
                   onPressed: () async {
                     if (_mediaService.isRecordingNotifier.value) {
                       await _mediaService.stopRecording(widget.opponentUsername);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Recording Saved to Database')),
-                      );
+                      final durSecs = _mediaService.lastRecordingDuration ?? 0;
+                      final durStr = '${(durSecs ~/ 60).toString().padLeft(2, '0')}:${(durSecs % 60).toString().padLeft(2, '0')}';
+                      if (mounted) {
+                        showDialog(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            backgroundColor: const Color(0xFF1E1E2C),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            title: Row(
+                              children: [
+                                Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 28),
+                                const SizedBox(width: 10),
+                                const Text('Recording Saved', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.white12),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.timer_rounded, color: AppColors.secondaryColor, size: 22),
+                                      const SizedBox(width: 8),
+                                      Text(durStr, style: const TextStyle(color: AppColors.secondaryColor, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text('Your screen recording has been saved successfully.', style: TextStyle(color: Colors.white70, fontSize: 13), textAlign: TextAlign.center),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('OK', style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
                     } else {
                       await _mediaService.startRecording();
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Recording Started')),
+                        SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
+                              const SizedBox(width: 8),
+                              const Text('Screen Recording Started'),
+                            ],
+                          ),
+                          backgroundColor: const Color(0xFF2A2A3A),
+                        ),
                       );
                     }
                   },
