@@ -46,7 +46,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
   bool isGameStarted = false;
   Timer? _opponentGraceTimer;
   bool _isGracePeriodActive = false;
-  
+
   // 🎙️ Media Signaling
   final GameMediaService _mediaService = GameMediaService();
   bool isMicMuted = true;
@@ -56,16 +56,17 @@ class _LiveGamePageState extends State<LiveGamePage> {
   StreamSubscription? _videoRequestSub;
   StreamSubscription? _videoResponseSub;
   bool isRecording = false;
+  Timer? _recordTimer;
 
   @override
   void initState() {
     super.initState();
     NotificationService().currentGameId = widget.gameId;
     board = Board();
-    
+
     // 🎙️ Initialize Renderers
     _initializeRenderers();
-    
+
     _connectWebSocket();
 
     // 🔹 Hide Game Start overlay after 1.5 seconds
@@ -81,13 +82,17 @@ class _LiveGamePageState extends State<LiveGamePage> {
       await _localRenderer.initialize();
       await _remoteRenderer.initialize();
       debugPrint("GAME_MEDIA_UI: Renderers initialized successfully");
-      
+
       if (_mediaService.localStreamNotifier.value != null) {
-        debugPrint("GAME_MEDIA_UI: Setting initial local stream: ${_mediaService.localStreamNotifier.value?.id}");
+        debugPrint(
+          "GAME_MEDIA_UI: Setting initial local stream: ${_mediaService.localStreamNotifier.value?.id}",
+        );
         _localRenderer.srcObject = _mediaService.localStreamNotifier.value;
       }
       if (_mediaService.remoteStreamNotifier.value != null) {
-        debugPrint("GAME_MEDIA_UI: Setting initial remote stream: ${_mediaService.remoteStreamNotifier.value?.id}");
+        debugPrint(
+          "GAME_MEDIA_UI: Setting initial remote stream: ${_mediaService.remoteStreamNotifier.value?.id}",
+        );
         _remoteRenderer.srcObject = _mediaService.remoteStreamNotifier.value;
       }
       if (mounted) setState(() {});
@@ -99,25 +104,31 @@ class _LiveGamePageState extends State<LiveGamePage> {
   void _connectWebSocket() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
-    
+
     if (token == null) {
       debugPrint("CHESS_ERROR: No access token found for WebSocket");
       return;
     }
 
-    final url = Uri.parse('${AppConstants.webSocketUrl}/game/${widget.gameId}/?token=$token');
+    final url = Uri.parse(
+      '${AppConstants.webSocketUrl}/game/${widget.gameId}/?token=$token',
+    );
     _channel = WebSocketChannel.connect(url);
-    
+
     // 🎙️ Initialize Media Signaling
     // Attach listeners BEFORE connecting to avoid race conditions
     _mediaService.localStreamNotifier.addListener(() {
-      debugPrint("GAME_MEDIA_UI: Local stream updated: ${_mediaService.localStreamNotifier.value?.id}");
+      debugPrint(
+        "GAME_MEDIA_UI: Local stream updated: ${_mediaService.localStreamNotifier.value?.id}",
+      );
       _localRenderer.srcObject = _mediaService.localStreamNotifier.value;
       if (mounted) setState(() {});
     });
 
     _mediaService.remoteStreamNotifier.addListener(() {
-      debugPrint("GAME_MEDIA_UI: Remote stream updated: ${_mediaService.remoteStreamNotifier.value?.id}");
+      debugPrint(
+        "GAME_MEDIA_UI: Remote stream updated: ${_mediaService.remoteStreamNotifier.value?.id}",
+      );
       _remoteRenderer.srcObject = _mediaService.remoteStreamNotifier.value;
       if (mounted) setState(() {});
     });
@@ -127,8 +138,65 @@ class _LiveGamePageState extends State<LiveGamePage> {
         setState(() {
           isRecording = _mediaService.isRecordingNotifier.value;
         });
+        if (isRecording && _recordTimer == null) {
+          _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+            if (mounted) setState(() {});
+          });
+        } else if (!isRecording && _recordTimer != null) {
+          _recordTimer?.cancel();
+          _recordTimer = null;
+        }
       }
     });
+
+    _mediaService.onRemoteEvent = (event, payload) {
+      if (!mounted) return;
+      if (event == 'recording_started') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.videocam_rounded,
+                  color: Colors.redAccent,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text('${widget.opponentUsername} started recording'),
+              ],
+            ),
+            backgroundColor: const Color(0xFF2A2A3A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else if (event == 'recording_stopped') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.videocam_off_rounded,
+                  color: Colors.white70,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text('${widget.opponentUsername} stopped recording'),
+              ],
+            ),
+            backgroundColor: const Color(0xFF2A2A3A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    };
 
     _videoRequestSub = _mediaService.onVideoRequest.listen((_) {
       _showVideoRequestDialog();
@@ -151,13 +219,15 @@ class _LiveGamePageState extends State<LiveGamePage> {
         );
       }
     });
-    
+
     // 🔹 Add a timeout for synchronization (increased to 60s)
     Timer(const Duration(seconds: 60), () {
       if (mounted && isSyncing) {
         debugPrint("CHESS_ERROR: Sync timed out for game ${widget.gameId}");
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Connection timed out. Please try again.")),
+          const SnackBar(
+            content: Text("Connection timed out. Please try again."),
+          ),
         );
         setState(() {
           isSyncing = false;
@@ -165,7 +235,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
         });
       }
     });
-    
+
     _channel!.stream.listen(
       (message) {
         final data = jsonDecode(message);
@@ -189,7 +259,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
         }
       },
     );
-    
+
     _startHeartbeat();
   }
 
@@ -212,18 +282,18 @@ class _LiveGamePageState extends State<LiveGamePage> {
         final fromCol = int.parse(moveStr[1]);
         final toRow = int.parse(moveStr[2]);
         final toCol = int.parse(moveStr[3]);
-        
+
         setState(() {
           board.movePiece(fromRow, fromCol, toRow, toCol);
           _updateCheckStatus();
         });
         break;
-        
+
       case 'opponent_disconnected':
         setState(() => isOpponentDisconnected = true);
         _showOpponentLeftPopup();
         break;
-        
+
       case 'player_reconnected':
         _opponentGraceTimer?.cancel();
         setState(() {
@@ -231,24 +301,31 @@ class _LiveGamePageState extends State<LiveGamePage> {
           _isGracePeriodActive = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Opponent reconnected!"), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text("Opponent reconnected!"),
+            backgroundColor: Colors.green,
+          ),
         );
         break;
-        
+
       case 'game_over':
-        _showGameOverDialog(data['reason'], loserUsername: data['loser_username']);
+        _showGameOverDialog(
+          data['reason'],
+          loserUsername: data['loser_username'],
+        );
         break;
-        
+
       case 'game_sync':
         final syncData = data['data'];
         final bool opponentOnline = syncData['is_opponent_online'] ?? true;
-        
+        bool shouldStartRecording = false;
+
         setState(() {
           board.loadFEN(syncData['fen']);
           isSyncing = false;
           isConnected = true;
           _updateCheckStatus();
-          
+
           if (!opponentOnline) {
             // Start 30s grace period instead of showing banner immediately
             _isGracePeriodActive = true;
@@ -268,9 +345,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
             // 🔹 FIX: If opponent is online, the game is effectively started
             if (!isGameStarted) {
               isGameStarted = true;
+              shouldStartRecording = true;
             }
           }
         });
+
+        if (shouldStartRecording && !_mediaService.isRecordingNotifier.value) {
+          _mediaService.startRecording();
+        }
 
         if (opponentOnline && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -294,9 +376,18 @@ class _LiveGamePageState extends State<LiveGamePage> {
           isOpponentDisconnected = false;
           _isGracePeriodActive = false;
         });
+        
+        // ── Auto-start recording when game begins ──
+        if (!_mediaService.isRecordingNotifier.value) {
+          _mediaService.startRecording();
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Game Started! Good luck.", style: TextStyle(fontWeight: FontWeight.bold)),
+            content: Text(
+              "Game Started! Good luck.",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -310,19 +401,33 @@ class _LiveGamePageState extends State<LiveGamePage> {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Opponent Left", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-        content: Text("${widget.opponentUsername} has left the game session. Waiting for them to return..."),
+        title: const Text(
+          "Opponent Left",
+          style: TextStyle(
+            color: Colors.redAccent,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          "${widget.opponentUsername} has left the game session. Waiting for them to return...",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("OK", style: TextStyle(color: AppColors.secondaryColor)),
+            child: const Text(
+              "OK",
+              style: TextStyle(color: AppColors.secondaryColor),
+            ),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               Navigator.popUntil(context, (route) => route.isFirst);
             },
-            child: const Text("Quit to Home", style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              "Quit to Home",
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
         ],
       ),
@@ -336,7 +441,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
   void onSquareTap(int row, int col) {
     if (board.gameOver || !isGameStarted) return;
-    
+
     // Check if it's the user's turn
     bool isUserWhite = widget.userColor == 'white';
     if (board.isWhiteTurn != isUserWhite) return;
@@ -354,26 +459,32 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
         if (isValid) {
           final moveStr = "$selectedRow$selectedCol$row$col";
-          
+
           // Apply locally
           board.movePiece(selectedRow!, selectedCol!, row, col);
           _updateCheckStatus();
-          
+
           // Send to server
-          _channel?.sink.add(jsonEncode({
-            'action': 'move',
-            'move': moveStr,
-            'fen': board.generateFEN() 
-          }));
-          
+          _channel?.sink.add(
+            jsonEncode({
+              'action': 'move',
+              'move': moveStr,
+              'fen': board.generateFEN(),
+            }),
+          );
+
           if (board.gameOver) {
             _showGameOverDialog('king_captured');
             // 🔹 Notify server that game is over
-            _channel?.sink.add(jsonEncode({
-              'action': 'game_over',
-              'reason': 'king_captured',
-              'winner_id': widget.userColor == 'white' ? null : null, // Backend handles IDs
-            }));
+            _channel?.sink.add(
+              jsonEncode({
+                'action': 'game_over',
+                'reason': 'king_captured',
+                'winner_id': widget.userColor == 'white'
+                    ? null
+                    : null, // Backend handles IDs
+              }),
+            );
           }
         }
 
@@ -392,15 +503,15 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
   void _offerDraw() {
     _channel?.sink.add(jsonEncode({'action': 'offer_draw'}));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Draw offer sent")),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Draw offer sent")));
   }
 
   void _showGameOverDialog(String reason, {String? loserUsername}) {
     String title = "Game Over";
     String content = "Reason: $reason";
-    
+
     if (reason == 'resignation') {
       content = "${loserUsername ?? 'Opponent'} resigned. You win!";
     } else if (reason == 'opponent_quit') {
@@ -417,12 +528,28 @@ class _LiveGamePageState extends State<LiveGamePage> {
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(title, style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
-        content: Text(content, style: const TextStyle(color: Colors.white, fontSize: 16)),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: AppColors.secondaryColor,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          content,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
-            child: const Text("Back to Home", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+            onPressed: () =>
+                Navigator.popUntil(context, (route) => route.isFirst),
+            child: const Text(
+              "Back to Home",
+              style: TextStyle(
+                color: AppColors.secondaryColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -434,15 +561,30 @@ class _LiveGamePageState extends State<LiveGamePage> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surfaceColor,
-        title: const Text("Draw Offer", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
-        content: Text("${username ?? widget.opponentUsername} offered a draw. Accept?", style: const TextStyle(color: Colors.white)),
+        title: const Text(
+          "Draw Offer",
+          style: TextStyle(
+            color: AppColors.secondaryColor,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          "${username ?? widget.opponentUsername} offered a draw. Accept?",
+          style: const TextStyle(color: Colors.white),
+        ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               _channel?.sink.add(jsonEncode({'action': 'decline_draw'}));
             },
-            child: const Text("Decline", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            child: const Text(
+              "Decline",
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
@@ -462,6 +604,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
     NotificationService().currentGameId = null;
     _opponentGraceTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _recordTimer?.cancel();
     _channel?.sink.close();
     _videoRequestSub?.cancel();
     _videoResponseSub?.cancel();
@@ -485,7 +628,13 @@ class _LiveGamePageState extends State<LiveGamePage> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text("Live Chess", style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+          title: const Text(
+            "Live Chess",
+            style: TextStyle(
+              color: AppColors.secondaryColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           backgroundColor: AppColors.surfaceColor,
           elevation: 0,
           actions: [
@@ -496,14 +645,38 @@ class _LiveGamePageState extends State<LiveGamePage> {
                   context: context,
                   builder: (context) => AlertDialog(
                     backgroundColor: AppColors.surfaceColor,
-                    title: const Text("Resign?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    content: const Text("Are you sure you want to resign this game?", style: TextStyle(color: Colors.white70)),
+                    title: const Text(
+                      "Resign?",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    content: const Text(
+                      "Are you sure you want to resign this game?",
+                      style: TextStyle(color: Colors.white70),
+                    ),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.white54))),
-                      TextButton(onPressed: () {
-                        Navigator.pop(context);
-                        _resign();
-                      }, child: const Text("Resign", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text(
+                          "Cancel",
+                          style: TextStyle(color: Colors.white54),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _resign();
+                        },
+                        child: const Text(
+                          "Resign",
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -520,7 +693,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
                 icon: Icon(
                   isMicMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
                   color: isMicMuted ? Colors.white54 : Colors.greenAccent,
-                  shadows: isMicMuted ? [] : [Shadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12)],
+                  shadows: isMicMuted
+                      ? []
+                      : [
+                          Shadow(
+                            color: Colors.greenAccent.withOpacity(0.6),
+                            blurRadius: 12,
+                          ),
+                        ],
                 ),
                 onPressed: () {
                   setState(() => isMicMuted = !isMicMuted);
@@ -529,89 +709,170 @@ class _LiveGamePageState extends State<LiveGamePage> {
               ),
               IconButton(
                 icon: Icon(
-                  isVideoEnabled ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+                  isVideoEnabled
+                      ? Icons.videocam_rounded
+                      : Icons.videocam_off_rounded,
                   color: isVideoEnabled ? Colors.cyanAccent : Colors.white54,
-                  shadows: isVideoEnabled ? [Shadow(color: Colors.cyanAccent.withOpacity(0.6), blurRadius: 12)] : [],
+                  shadows: isVideoEnabled
+                      ? [
+                          Shadow(
+                            color: Colors.cyanAccent.withOpacity(0.6),
+                            blurRadius: 12,
+                          ),
+                        ]
+                      : [],
                 ),
                 onPressed: _handleVideoToggle,
               ),
               if (isConnected) // Both users on call/game
-                IconButton(
-                  icon: Icon(
-                    isRecording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
-                    color: isRecording ? Colors.red : Colors.white54,
-                    size: isRecording ? 30 : 24,
-                    shadows: isRecording ? [Shadow(color: Colors.red.withOpacity(0.8), blurRadius: 16)] : [],
-                  ),
-                  onPressed: () async {
-                    if (_mediaService.isRecordingNotifier.value) {
-                      await _mediaService.stopRecording(widget.opponentUsername);
-                      final durSecs = _mediaService.lastRecordingDuration ?? 0;
-                      final durStr = '${(durSecs ~/ 60).toString().padLeft(2, '0')}:${(durSecs % 60).toString().padLeft(2, '0')}';
-                      if (mounted) {
-                        showDialog(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            backgroundColor: const Color(0xFF1E1E2C),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                            title: Row(
-                              children: [
-                                Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 28),
-                                const SizedBox(width: 10),
-                                const Text('Recording Saved', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.05),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.white12),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(Icons.timer_rounded, color: AppColors.secondaryColor, size: 22),
-                                      const SizedBox(width: 8),
-                                      Text(durStr, style: const TextStyle(color: AppColors.secondaryColor, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-                                    ],
-                                  ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        isRecording
+                            ? Icons.stop_circle_rounded
+                            : Icons.fiber_manual_record_rounded,
+                        color: Colors.red,
+                        size: isRecording ? 30 : 24,
+                        shadows: [
+                          Shadow(
+                            color: Colors.red.withOpacity(0.8),
+                            blurRadius: 16,
+                          ),
+                        ],
+                      ),
+                      onPressed: () async {
+                        if (_mediaService.isRecordingNotifier.value) {
+                          await _mediaService.stopRecording(
+                            widget.opponentUsername,
+                          );
+                          final durSecs =
+                              _mediaService.lastRecordingDuration ?? 0;
+                          final durStr =
+                              '${(durSecs ~/ 60).toString().padLeft(2, '0')}:${(durSecs % 60).toString().padLeft(2, '0')}';
+                          if (mounted) {
+                            showDialog(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                backgroundColor: const Color(0xFF1E1E2C),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
-                                const SizedBox(height: 12),
-                                Text('Your screen recording has been saved successfully.', style: TextStyle(color: Colors.white70, fontSize: 13), textAlign: TextAlign.center),
-                              ],
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(),
-                                child: const Text('OK', style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+                                title: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      color: Colors.greenAccent,
+                                      size: 28,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    const Text(
+                                      'Recording Saved',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.05),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: Colors.white12,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            Icons.timer_rounded,
+                                            color: AppColors.secondaryColor,
+                                            size: 22,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            durStr,
+                                            style: const TextStyle(
+                                              color: AppColors.secondaryColor,
+                                              fontSize: 28,
+                                              fontWeight: FontWeight.bold,
+                                              fontFamily: 'monospace',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'Your screen recording has been saved successfully.',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 13,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
+                                    child: const Text(
+                                      'OK',
+                                      style: TextStyle(
+                                        color: AppColors.secondaryColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        );
-                      }
-                    } else {
-                      await _mediaService.startRecording();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Row(
-                            children: [
-                              Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
-                              const SizedBox(width: 8),
-                              const Text('Screen Recording Started'),
-                            ],
-                          ),
-                          backgroundColor: const Color(0xFF2A2A3A),
+                            );
+                          }
+                        } else {
+                          await _mediaService.startRecording();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(
+                                    Icons.fiber_manual_record,
+                                    color: Colors.red,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text('Screen Recording Started'),
+                                ],
+                              ),
+                              backgroundColor: const Color(0xFF2A2A3A),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                    if (isRecording && _mediaService.recordingStartTime != null)
+                      Text(
+                        '${(DateTime.now().difference(_mediaService.recordingStartTime!).inMinutes).toString().padLeft(2, '0')}:${(DateTime.now().difference(_mediaService.recordingStartTime!).inSeconds % 60).toString().padLeft(2, '0')}',
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace',
                         ),
-                      );
-                    }
-                  },
+                      ),
+                  ],
                 ),
+              const SizedBox(width: 8),
             ],
-            const SizedBox(width: 8),
           ],
         ),
         body: Container(
@@ -629,9 +890,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(color: AppColors.secondaryColor),
+                      CircularProgressIndicator(
+                        color: AppColors.secondaryColor,
+                      ),
                       SizedBox(height: 20),
-                      Text("Synchronizing board...", style: TextStyle(color: Colors.white70)),
+                      Text(
+                        "Synchronizing board...",
+                        style: TextStyle(color: Colors.white70),
+                      ),
                     ],
                   ),
                 )
@@ -639,8 +905,11 @@ class _LiveGamePageState extends State<LiveGamePage> {
                 Column(
                   children: [
                     // ── Opponent Info ──
-                    _buildPlayerHeader(widget.opponentUsername, widget.userColor != 'white'),
-                    
+                    _buildPlayerHeader(
+                      widget.opponentUsername,
+                      widget.userColor != 'white',
+                    ),
+
                     if (isOpponentDisconnected && !_isGracePeriodActive)
                       Container(
                         width: double.infinity,
@@ -649,28 +918,30 @@ class _LiveGamePageState extends State<LiveGamePage> {
                         child: const Text(
                           "Opponent disconnected. Waiting...",
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-        
+
                     const Spacer(),
-                    
+
                     // 🎥 Video Call Row
                     _buildVideoRow(),
 
                     // ── The Board ──
                     _buildBoard(),
-        
+
                     const Spacer(),
-                    
+
                     // ── User Info ──
                     _buildPlayerHeader("You", widget.userColor == 'white'),
-                    
+
                     const SizedBox(height: 20),
                   ],
                 ),
-              if (showGameStartOverlay)
-                _buildGameStartOverlay(),
+              if (showGameStartOverlay) _buildGameStartOverlay(),
             ],
           ),
         ),
@@ -678,7 +949,11 @@ class _LiveGamePageState extends State<LiveGamePage> {
     );
   }
 
-  Widget _buildCompactControl({required IconData icon, required bool isActive, required VoidCallback onTap}) {
+  Widget _buildCompactControl({
+    required IconData icon,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -693,15 +968,23 @@ class _LiveGamePageState extends State<LiveGamePage> {
     );
   }
 
-  Widget _buildVideoBox({required RTCVideoRenderer renderer, required bool isEnabled, required bool isLocal}) {
+  Widget _buildVideoBox({
+    required RTCVideoRenderer renderer,
+    required bool isEnabled,
+    required bool isLocal,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.black45,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isLocal 
-            ? (isEnabled ? Colors.greenAccent.withOpacity(0.5) : Colors.white10) 
-            : (isEnabled ? AppColors.secondaryColor.withOpacity(0.5) : Colors.white10),
+          color: isLocal
+              ? (isEnabled
+                    ? Colors.greenAccent.withOpacity(0.5)
+                    : Colors.white10)
+              : (isEnabled
+                    ? AppColors.secondaryColor.withOpacity(0.5)
+                    : Colors.white10),
           width: 2,
         ),
       ),
@@ -713,7 +996,9 @@ class _LiveGamePageState extends State<LiveGamePage> {
             if (isEnabled && renderer.srcObject != null)
               RTCVideoView(
                 renderer,
-                key: ValueKey('${isLocal ? 'local' : 'remote'}_${renderer.srcObject?.id}'),
+                key: ValueKey(
+                  '${isLocal ? 'local' : 'remote'}_${renderer.srcObject?.id}',
+                ),
                 mirror: isLocal,
                 objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
               )
@@ -723,80 +1008,115 @@ class _LiveGamePageState extends State<LiveGamePage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      isLocal ? Icons.person_rounded : Icons.account_circle_rounded, 
-                      color: Colors.white12, 
-                      size: 48
+                      isLocal
+                          ? Icons.person_rounded
+                          : Icons.account_circle_rounded,
+                      color: Colors.white12,
+                      size: 48,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      isEnabled ? "Connecting..." : (isLocal ? "Your Video Off" : "Opponent Video Off"),
-                      style: const TextStyle(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.bold),
+                      isEnabled
+                          ? "Connecting..."
+                          : (isLocal ? "Your Video Off" : "Opponent Video Off"),
+                      style: const TextStyle(
+                        color: Colors.white24,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
               ),
-            
+
             // Icons Overlay (On both for status, controls only on local)
             Positioned(
               top: 8,
               right: 8,
-              child: isLocal 
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildCompactControl(
-                        icon: isMicMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                        isActive: !isMicMuted,
-                        onTap: () {
-                          setState(() => isMicMuted = !isMicMuted);
-                          _mediaService.toggleMic(!isMicMuted);
-                        },
-                      ),
-                      const SizedBox(width: 6),
-                      _buildCompactControl(
-                        icon: isVideoEnabled ? Icons.videocam_off_rounded : Icons.videocam_rounded,
-                        isActive: false,
-                        onTap: _handleVideoToggle,
-                      ),
-                      if (isConnected) ...[
-                        const SizedBox(width: 6),
+              child: isLocal
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         _buildCompactControl(
-                          icon: isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
-                          isActive: isRecording,
-                          onTap: () async {
-                            if (_mediaService.isRecordingNotifier.value) {
-                              await _mediaService.stopRecording(widget.opponentUsername);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Recording Saved to Database')),
-                              );
-                            } else {
-                              await _mediaService.startRecording();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Recording Started')),
-                              );
-                            }
+                          icon: isMicMuted
+                              ? Icons.mic_off_rounded
+                              : Icons.mic_rounded,
+                          isActive: !isMicMuted,
+                          onTap: () {
+                            setState(() => isMicMuted = !isMicMuted);
+                            _mediaService.toggleMic(!isMicMuted);
                           },
                         ),
+                        const SizedBox(width: 6),
+                        _buildCompactControl(
+                          icon: isVideoEnabled
+                              ? Icons.videocam_off_rounded
+                              : Icons.videocam_rounded,
+                          isActive: false,
+                          onTap: _handleVideoToggle,
+                        ),
+                        if (isConnected) ...[
+                          const SizedBox(width: 6),
+                          _buildCompactControl(
+                            icon: isRecording
+                                ? Icons.stop_circle
+                                : Icons.fiber_manual_record,
+                            isActive: isRecording,
+                            onTap: () async {
+                              if (_mediaService.isRecordingNotifier.value) {
+                                await _mediaService.stopRecording(
+                                  widget.opponentUsername,
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Recording Saved to Database',
+                                    ),
+                                  ),
+                                );
+                              } else {
+                                await _mediaService.startRecording();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Recording Started'),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ],
                       ],
-                    ],
-                  )
-                : (isEnabled 
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.live_tv_rounded, color: Colors.redAccent, size: 12),
-                            const SizedBox(width: 4),
-                            Text(widget.opponentUsername, style: const TextStyle(color: Colors.white, fontSize: 10)),
-                          ],
-                        ),
-                      )
-                    : const SizedBox.shrink()),
+                    )
+                  : (isEnabled
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.live_tv_rounded,
+                                  color: Colors.redAccent,
+                                  size: 12,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  widget.opponentUsername,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink()),
             ),
           ],
         ),
@@ -808,12 +1128,13 @@ class _LiveGamePageState extends State<LiveGamePage> {
     return ValueListenableBuilder<bool>(
       valueListenable: _mediaService.isOpponentVideoEnabled,
       builder: (context, opponentVideoEnabled, _) {
-        if (!isVideoEnabled && !opponentVideoEnabled) return const SizedBox.shrink();
+        if (!isVideoEnabled && !opponentVideoEnabled)
+          return const SizedBox.shrink();
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: SizedBox(
-            height: 140, 
+            height: 140,
             child: Row(
               children: [
                 if (opponentVideoEnabled)
@@ -860,15 +1181,24 @@ class _LiveGamePageState extends State<LiveGamePage> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceColor,
-        title: const Text("Video Call Request", style: TextStyle(color: Colors.white)),
-        content: const Text("Your opponent wants to start a video call. Do you want to join?", style: TextStyle(color: Colors.white70)),
+        title: const Text(
+          "Video Call Request",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "Your opponent wants to start a video call. Do you want to join?",
+          style: TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               _mediaService.respondVideo(false);
             },
-            child: const Text("Decline", style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              "Decline",
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -877,7 +1207,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
               setState(() => isVideoEnabled = true);
               _mediaService.toggleVideo(true);
             },
-            child: const Text("Accept", style: TextStyle(color: Colors.greenAccent)),
+            child: const Text(
+              "Accept",
+              style: TextStyle(color: Colors.greenAccent),
+            ),
           ),
         ],
       ),
@@ -897,13 +1230,25 @@ class _LiveGamePageState extends State<LiveGamePage> {
               child: Opacity(
                 opacity: value,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 40,
+                    vertical: 20,
+                  ),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: AppColors.woodGradient),
+                    gradient: const LinearGradient(
+                      colors: AppColors.woodGradient,
+                    ),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.secondaryColor, width: 2),
+                    border: Border.all(
+                      color: AppColors.secondaryColor,
+                      width: 2,
+                    ),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, spreadRadius: 5),
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.5),
+                        blurRadius: 20,
+                        spreadRadius: 5,
+                      ),
                     ],
                   ),
                   child: const Text(
@@ -930,7 +1275,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Quit Game?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Quit Game?",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         content: const Text(
           "Are you sure you want to leave the game? This will count as a forfeit if you don't return quickly.",
           style: TextStyle(color: Colors.white70),
@@ -938,11 +1286,17 @@ class _LiveGamePageState extends State<LiveGamePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text("Stay", style: TextStyle(color: AppColors.secondaryColor)),
+            child: const Text(
+              "Stay",
+              style: TextStyle(color: AppColors.secondaryColor),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text("Quit", style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              "Quit",
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -966,7 +1320,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
             ),
             child: CircleAvatar(
               backgroundColor: Colors.white10,
-              child: Text(name[0].toUpperCase(), style: const TextStyle(color: AppColors.secondaryColor)),
+              child: Text(
+                name[0].toUpperCase(),
+                style: const TextStyle(color: AppColors.secondaryColor),
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -995,7 +1352,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
                 color: AppColors.secondaryColor.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text("THINKING", style: TextStyle(color: AppColors.secondaryColor, fontSize: 10, fontWeight: FontWeight.bold)),
+              child: const Text(
+                "THINKING",
+                style: TextStyle(
+                  color: AppColors.secondaryColor,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ],
@@ -1011,13 +1375,19 @@ class _LiveGamePageState extends State<LiveGamePage> {
         decoration: BoxDecoration(
           border: Border.all(color: AppColors.secondaryColor, width: 4),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, spreadRadius: 5),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 20,
+              spreadRadius: 5,
+            ),
           ],
         ),
         child: GridView.builder(
           physics: const NeverScrollableScrollPhysics(),
           itemCount: 64,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 8),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 8,
+          ),
           itemBuilder: (context, index) {
             // Flip board for black player
             int displayIndex = widget.userColor == 'black' ? 63 - index : index;
@@ -1026,7 +1396,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
             bool isWhite = (row + col) % 2 == 0;
             final piece = board.board[row][col];
-            
+
             bool isCheckSquare = false;
             if (piece != null && piece.type == PieceType.king) {
               if (piece.isWhite && isWhiteInCheck) isCheckSquare = true;

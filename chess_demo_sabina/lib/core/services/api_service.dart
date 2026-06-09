@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -499,6 +500,20 @@ class ApiService {
 
     final url = Uri.parse('${AppConstants.baseUrl}/call/recordings/save');
     try {
+      // Verify the file actually exists before trying to upload
+      final file = File(filePath);
+      final fileExists = await file.exists();
+      debugPrint('[RECORDING_UPLOAD] File path: $filePath');
+      debugPrint('[RECORDING_UPLOAD] File exists: $fileExists');
+
+      if (!fileExists) {
+        debugPrint('[RECORDING_UPLOAD] ERROR: File does not exist at path: $filePath');
+        return {'success': false, 'error': 'Recording file not found at: $filePath'};
+      }
+
+      final fileSize = await file.length();
+      debugPrint('[RECORDING_UPLOAD] File size: ${fileSize ~/ 1024} KB');
+
       final request = http.MultipartRequest('POST', url);
       request.headers['Authorization'] = 'Bearer $token';
       
@@ -517,10 +532,14 @@ class ApiService {
         ),
       );
 
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 45));
+      debugPrint('[RECORDING_UPLOAD] Sending to $url...');
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 120));
       final response = await http.Response.fromStream(streamedResponse);
+      debugPrint('[RECORDING_UPLOAD] Response status: ${response.statusCode}');
+      debugPrint('[RECORDING_UPLOAD] Response body: ${response.body}');
       return _handleResponse(response, 'Failed to upload recording');
     } catch (e) {
+      debugPrint('[RECORDING_UPLOAD] Exception: $e');
       return {'success': false, 'error': _formatError(e)};
     }
   }

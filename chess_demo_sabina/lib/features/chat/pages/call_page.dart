@@ -62,6 +62,43 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
     _pulseController = AnimationController(duration: const Duration(milliseconds: 1500), vsync: this)..repeat(reverse: true);
     
     _initRenderers();
+
+    _callManager.onRemoteEvent = (event, payload) {
+      if (!mounted) return;
+      if (event == 'recording_started') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.videocam_rounded, color: Colors.redAccent, size: 18),
+                const SizedBox(width: 8),
+                Text('${widget.remoteUsername} started recording'),
+              ],
+            ),
+            backgroundColor: const Color(0xFF2A2A3A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else if (event == 'recording_stopped') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.videocam_off_rounded, color: Colors.white70, size: 18),
+                const SizedBox(width: 8),
+                Text('${widget.remoteUsername} stopped recording'),
+              ],
+            ),
+            backgroundColor: const Color(0xFF2A2A3A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    };
     
     _updateSubscription = _callManager.onUpdate.listen((_) {
       if (mounted) {
@@ -453,41 +490,70 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                             label: 'Flip',
                           ),
                         if (_callManager.isConnected)
-                          _actionBtn(
-                            _callManager.isRecording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
-                            _callManager.isRecording,
-                            () async {
-                              if (_callManager.isRecording) {
-                                await _callManager.stopRecording();
-                                if (mounted) {
-                                  _showRecordingSavedDialog(_callManager.lastRecordingDuration);
-                                  _callManager.lastRecordingDuration = null; // Clear so it doesn't show again on call end
-                                }
-                              } else {
-                                await _callManager.startRecording();
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Row(
-                                        children: [
-                                          Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
-                                          SizedBox(width: 8),
-                                          Text('Screen Recording Started'),
-                                        ],
-                                      ),
-                                      backgroundColor: const Color(0xFF2A2A3A),
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                            activeColor: Colors.red,
-                            activeIconColor: Colors.white,
-                            label: _callManager.isRecording && _callManager.recordingStartTime != null
-                                ? _formatDuration(DateTime.now().difference(_callManager.recordingStartTime!).inSeconds)
-                                : 'Record',
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: _callManager.isRecording
+                                      ? [BoxShadow(color: Colors.red.withOpacity(0.6), blurRadius: 14, spreadRadius: 1)]
+                                      : [],
+                                ),
+                                child: FloatingActionButton(
+                                  mini: true,
+                                  heroTag: null,
+                                  onPressed: () async {
+                                    if (_callManager.isRecording) {
+                                      await _callManager.stopRecording();
+                                      if (mounted) {
+                                        _showRecordingSavedDialog(_callManager.lastRecordingDuration);
+                                        _callManager.lastRecordingDuration = null;
+                                      }
+                                    } else {
+                                      await _callManager.startRecording();
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: const Row(
+                                              children: [
+                                                Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
+                                                SizedBox(width: 8),
+                                                Text('Screen Recording Started'),
+                                              ],
+                                            ),
+                                            backgroundColor: const Color(0xFF2A2A3A),
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  backgroundColor: _callManager.isRecording ? Colors.red : Colors.white.withOpacity(0.12),
+                                  elevation: _callManager.isRecording ? 6 : 0,
+                                  child: Icon(
+                                    _callManager.isRecording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
+                                    color: _callManager.isRecording ? Colors.white : Colors.red,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  _callManager.isRecording && _callManager.recordingStartTime != null
+                                      ? _formatDuration(DateTime.now().difference(_callManager.recordingStartTime!).inSeconds)
+                                      : 'Record',
+                                  style: TextStyle(
+                                    color: _callManager.isRecording ? Colors.redAccent : Colors.red.withOpacity(0.7),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: _callManager.isRecording ? 'monospace' : null,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                       ],
                     ),

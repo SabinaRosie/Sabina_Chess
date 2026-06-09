@@ -30,6 +30,8 @@ class GameMediaService {
 
   final _videoResponseController = StreamController<bool>.broadcast();
   Stream<bool> get onVideoResponse => _videoResponseController.stream;
+  
+  Function(String event, dynamic payload)? onRemoteEvent;
 
   bool _isCaller = false;
   String? _gameId;
@@ -347,6 +349,14 @@ class GameMediaService {
           _sendSignal('peer_ready', {'isCaller': _isCaller});
         }
         break;
+
+      case 'recording_started':
+        onRemoteEvent?.call('recording_started', payload);
+        break;
+        
+      case 'recording_stopped':
+        onRemoteEvent?.call('recording_stopped', payload);
+        break;
     }
   }
 
@@ -375,10 +385,10 @@ class GameMediaService {
   Future<void> startRecording() async {
     if (isRecordingNotifier.value) return;
     try {
-      final hasPermission = await Permission.storage.request().isGranted && 
-                            await Permission.microphone.request().isGranted;
-      
-      if (hasPermission) {
+      await Permission.storage.request();
+      final hasMic = await Permission.microphone.request().isGranted;
+
+      if (hasMic) {
         final title = 'game_${_gameId}_${DateTime.now().millisecondsSinceEpoch}';
         final success = await FlutterScreenRecording.startRecordScreenAndAudio(title);
         if (success) {
@@ -386,6 +396,7 @@ class GameMediaService {
           recordingStartTime = DateTime.now();
           lastRecordingDuration = null;
           debugPrint("GameMediaService: Screen recording started: $title");
+          _sendSignal('recording_started', {});
         } else {
           debugPrint("GameMediaService: Failed to start screen recording");
         }
@@ -406,6 +417,7 @@ class GameMediaService {
         lastRecordingDuration = DateTime.now().difference(recordingStartTime!).inSeconds;
       }
       recordingStartTime = null;
+      _sendSignal('recording_stopped', {});
       
       if (path != null && path.isNotEmpty) {
         debugPrint("GameMediaService: Screen recording stopped. Saved locally at $path");

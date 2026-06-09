@@ -56,6 +56,8 @@ class CallManager {
 
   final _updateController = StreamController<void>.broadcast();
   Stream<void> get onUpdate => _updateController.stream;
+  
+  Function(String event, dynamic payload)? onRemoteEvent;
 
   bool _isInitialized = false;
 
@@ -458,6 +460,12 @@ class CallManager {
         remoteVideoEnabled = payload['enabled'];
         notify();
         break;
+      case 'recording_started':
+        onRemoteEvent?.call('recording_started', payload);
+        break;
+      case 'recording_stopped':
+        onRemoteEvent?.call('recording_stopped', payload);
+        break;
       case 'end_call':
         if (roomId == payload['room_id']) {
           endCall();
@@ -477,6 +485,8 @@ class CallManager {
       notify();
     });
     notify();
+    // ── Auto-start recording as soon as both peers are connected ──
+    startRecording();
   }
 
   void toggleMic() {
@@ -622,10 +632,10 @@ class CallManager {
   Future<void> startRecording() async {
     if (isRecording) return;
     try {
-      final hasPermission = await Permission.storage.request().isGranted && 
-                            await Permission.microphone.request().isGranted;
+      await Permission.storage.request();
+      final hasMic = await Permission.microphone.request().isGranted;
       
-      if (hasPermission) {
+      if (hasMic) {
         final title = 'call_${roomId}_${DateTime.now().millisecondsSinceEpoch}';
         final success = await FlutterScreenRecording.startRecordScreenAndAudio(title);
         if (success) {
@@ -633,6 +643,9 @@ class CallManager {
           recordingStartTime = DateTime.now();
           lastRecordingDuration = null;
           debugPrint("CallManager: Screen recording started: $title");
+          if (roomId != null) {
+            SignalingService.sendWsSignal('recording_started', {'room_id': roomId!});
+          }
           notify();
         } else {
           debugPrint("CallManager: Failed to start screen recording");
@@ -654,6 +667,9 @@ class CallManager {
         lastRecordingDuration = DateTime.now().difference(recordingStartTime!).inSeconds;
       }
       recordingStartTime = null;
+      if (roomId != null) {
+        SignalingService.sendWsSignal('recording_stopped', {'room_id': roomId!});
+      }
       notify();
       
       if (path != null && path.isNotEmpty) {
