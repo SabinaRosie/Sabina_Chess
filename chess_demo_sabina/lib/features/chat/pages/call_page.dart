@@ -35,6 +35,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
   static const String beepUrl = 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3';
  
   StreamSubscription? _updateSubscription;
+  Timer? _recordTimer;
 
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
@@ -71,19 +72,92 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
           if (_remoteRenderer.srcObject != _callManager.remoteStream) {
             _remoteRenderer.srcObject = _callManager.remoteStream;
           }
+          
+          if (_callManager.isRecording && _recordTimer == null) {
+            _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+              if (mounted) setState(() {});
+            });
+          } else if (!_callManager.isRecording && _recordTimer != null) {
+            _recordTimer?.cancel();
+            _recordTimer = null;
+          }
         });
       }
       if (_callManager.roomId == null) {
         // Call ended remotely or locally
-        Navigator.pushReplacement(
-          context, 
-          MaterialPageRoute(
-            builder: (_) => CallEndedPage(
-              remoteUsername: widget.remoteUsername, 
-              duration: _formatDuration(_callManager.callDuration)
+        final callDur = _callManager.callDuration;
+        final recDur = _callManager.lastRecordingDuration;
+        
+        if (recDur != null && mounted) {
+          _callManager.lastRecordingDuration = null; // Prevent showing twice
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => AlertDialog(
+              backgroundColor: const Color(0xFF1E1E2C),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 28),
+                  SizedBox(width: 10),
+                  Text('Recording Saved', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.timer_rounded, color: AppColors.secondaryColor, size: 22),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatDuration(recDur),
+                          style: const TextStyle(color: AppColors.secondaryColor, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Your screen recording was saved successfully.',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // close dialog
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => CallEndedPage(remoteUsername: widget.remoteUsername, duration: _formatDuration(callDur))),
+                    );
+                  },
+                  child: const Text('OK', style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+        } else if (mounted) {
+          Navigator.pushReplacement(
+            context, 
+            MaterialPageRoute(
+              builder: (_) => CallEndedPage(
+                remoteUsername: widget.remoteUsername, 
+                duration: _formatDuration(callDur)
+              )
             )
-          )
-        );
+          );
+        }
       }
     });
  
@@ -126,6 +200,14 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
     }
   }
 
+  void _endCall() {
+    _updateSubscription?.cancel();
+    _recordTimer?.cancel();
+    if (_callManager.isConnected) {
+      _callManager.endCall();
+    }
+  }
+
   void _playSound(String url, {bool loop = false}) async { 
     try { 
       await _audioPlayer.setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.release); 
@@ -139,6 +221,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _updateSubscription?.cancel();
+    _recordTimer?.cancel();
     _pulseController.dispose();
     _audioPlayer.dispose();
     
@@ -378,6 +461,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                                 await _callManager.stopRecording();
                                 if (mounted) {
                                   _showRecordingSavedDialog(_callManager.lastRecordingDuration);
+                                  _callManager.lastRecordingDuration = null; // Clear so it doesn't show again on call end
                                 }
                               } else {
                                 await _callManager.startRecording();
@@ -401,7 +485,9 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                             },
                             activeColor: Colors.red,
                             activeIconColor: Colors.white,
-                            label: _callManager.isRecording ? 'Stop' : 'Record',
+                            label: _callManager.isRecording && _callManager.recordingStartTime != null
+                                ? _formatDuration(DateTime.now().difference(_callManager.recordingStartTime!).inSeconds)
+                                : 'Record',
                           ),
                       ],
                     ),
@@ -449,77 +535,7 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
       child: FloatingActionButton(
         heroTag: null,
         onPressed: () async {
-          final wasRecording = _callManager.isRecording;
-          final callDur = _callManager.callDuration;
           await _callManager.endCall();
-          final recDur = _callManager.lastRecordingDuration;
-          if (mounted) {
-            if (wasRecording) {
-              // Show recording saved popup first, then navigate on dismiss
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (_) => AlertDialog(
-                  backgroundColor: const Color(0xFF1E1E2C),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  title: const Row(
-                    children: [
-                      Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 28),
-                      SizedBox(width: 10),
-                      Text('Recording Saved', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.timer_rounded, color: AppColors.secondaryColor, size: 22),
-                            const SizedBox(width: 8),
-                            Text(
-                              recDur != null ? _formatDuration(recDur) : '00:00',
-                              style: const TextStyle(color: AppColors.secondaryColor, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Your screen recording was saved before the call ended.',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop(); // close dialog
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => CallEndedPage(remoteUsername: widget.remoteUsername, duration: _formatDuration(callDur))),
-                        );
-                      },
-                      child: const Text('OK', style: TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-              );
-            } else {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => CallEndedPage(remoteUsername: widget.remoteUsername, duration: _formatDuration(callDur))),
-              );
-            }
-          }
         },
         backgroundColor: Colors.red,
         elevation: 12,
