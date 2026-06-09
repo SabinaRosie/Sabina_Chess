@@ -161,7 +161,7 @@ class CallManager {
       final iceConfig = {
         'iceServers': servers,
         'iceCandidatePoolSize': 10,
-        'bundlePolicy': 'max-bundle',
+        'bundlePolicy': 'balanced',
         'rtcpMuxPolicy': 'require',
         'sdpSemantics': 'unified-plan',
         'iceTransportPolicy': 'all',
@@ -336,16 +336,6 @@ class CallManager {
         },
       );
 
-      // Send initial presence
-      if (isCaller!) {
-        if (callStatus == 'Initializing...') {
-          callStatus = 'Ringing...';
-        }
-        SignalingService.sendWsSignal('caller_ready', {'room_id': roomId, 'video_enabled': !isCameraOff});
-      } else {
-        SignalingService.sendWsSignal('receiver_ready', {'room_id': roomId, 'video_enabled': !isCameraOff});
-      }
-
       _startHeartbeat();
       notify();
     } catch (e) {
@@ -394,6 +384,18 @@ class CallManager {
       final payload = data['data'];
 
     switch (type) {
+      case 'connection_established':
+        debugPrint("✅ Server handshake confirmed for room $roomId");
+        if (isCaller!) {
+          if (callStatus == 'Initializing...') {
+            callStatus = 'Ringing...';
+            notify();
+          }
+          SignalingService.sendWsSignal('caller_ready', {'room_id': roomId!, 'video_enabled': !isCameraOff});
+        } else {
+          SignalingService.sendWsSignal('receiver_ready', {'room_id': roomId!, 'video_enabled': !isCameraOff});
+        }
+        break;
       case 'caller_ready':
         if (!isCaller! && isConnected == false) {
           SignalingService.sendWsSignal('receiver_ready', {'room_id': roomId!, 'video_enabled': !isCameraOff});
