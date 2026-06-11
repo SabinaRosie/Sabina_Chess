@@ -422,7 +422,31 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                 height: 150,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(15),
-                  child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: _callManager.switchCamera,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.flip_camera_ios_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -482,13 +506,6 @@ class _CallPageState extends State<CallPage> with SingleTickerProviderStateMixin
                           activeIconColor: Colors.white,
                           label: 'Camera',
                         ),
-                        if (!_callManager.isCameraOff)
-                          _actionBtn(
-                            Icons.cameraswitch_rounded,
-                            false,
-                            _callManager.switchCamera,
-                            label: 'Flip',
-                          ),
                         if (_callManager.isConnected)
                           Column(
                             mainAxisSize: MainAxisSize.min,

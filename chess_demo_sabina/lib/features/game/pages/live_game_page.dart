@@ -496,9 +496,9 @@ class _LiveGamePageState extends State<LiveGamePage> {
   }
 
   void _resign() {
+    _stopRecording();
     _channel?.sink.add(jsonEncode({'action': 'resign'}));
     // Navigation will be handled by the game_over signal or manually if needed
-    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   void _offerDraw() {
@@ -508,7 +508,104 @@ class _LiveGamePageState extends State<LiveGamePage> {
     ).showSnackBar(const SnackBar(content: Text("Draw offer sent")));
   }
 
+  Future<void> _stopRecording() async {
+    if (_mediaService.isRecordingNotifier.value) {
+      await _mediaService.stopRecording(widget.opponentUsername);
+      final durSecs = _mediaService.lastRecordingDuration ?? 0;
+      final durStr =
+          '${(durSecs ~/ 60).toString().padLeft(2, '0')}:${(durSecs % 60).toString().padLeft(2, '0')}';
+      if (mounted) {
+        await showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            backgroundColor: const Color(0xFF1E1E2C),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Row(
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.greenAccent,
+                  size: 28,
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Recording Saved',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white12,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.timer_rounded,
+                        color: AppColors.secondaryColor,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        durStr,
+                        style: const TextStyle(
+                          color: AppColors.secondaryColor,
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Your screen recording has been saved successfully.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(
+                    color: AppColors.secondaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
   void _showGameOverDialog(String reason, {String? loserUsername}) {
+    // ── Stop recording if active when game ends ──
+    _stopRecording();
+
     String title = "Game Over";
     String content = "Reason: $reason";
 
@@ -622,7 +719,8 @@ class _LiveGamePageState extends State<LiveGamePage> {
         if (didPop) return;
         final bool shouldQuit = await _showQuitConfirmation() ?? false;
         if (shouldQuit && context.mounted) {
-          Navigator.popUntil(context, (route) => route.isFirst);
+          _stopRecording();
+          _channel?.sink.add(jsonEncode({'action': 'resign'}));
         }
       },
       child: Scaffold(
@@ -727,22 +825,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
               if (isConnected) // Both users on call/game
                 Column(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    IconButton(
-                      icon: Icon(
-                        isRecording
-                            ? Icons.stop_circle_rounded
-                            : Icons.fiber_manual_record_rounded,
-                        color: Colors.red,
-                        size: isRecording ? 30 : 24,
-                        shadows: [
-                          Shadow(
-                            color: Colors.red.withOpacity(0.8),
-                            blurRadius: 16,
-                          ),
-                        ],
-                      ),
-                      onPressed: () async {
+                    GestureDetector(
+                      onTap: () async {
                         if (_mediaService.isRecordingNotifier.value) {
                           await _mediaService.stopRecording(
                             widget.opponentUsername,
@@ -858,6 +944,19 @@ class _LiveGamePageState extends State<LiveGamePage> {
                           );
                         }
                       },
+                      child: Icon(
+                        isRecording
+                            ? Icons.stop_circle_rounded
+                            : Icons.fiber_manual_record_rounded,
+                        color: Colors.red,
+                        size: isRecording ? 24 : 20,
+                        shadows: [
+                          Shadow(
+                            color: Colors.red.withOpacity(0.8),
+                            blurRadius: 16,
+                          ),
+                        ],
+                      ),
                     ),
                     if (isRecording && _mediaService.recordingStartTime != null)
                       Text(
@@ -1037,6 +1136,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (isEnabled) ...[
+                          _buildCompactControl(
+                            icon: Icons.flip_camera_ios_rounded,
+                            isActive: false,
+                            onTap: () => _mediaService.switchCamera(),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
                         _buildCompactControl(
                           icon: isMicMuted
                               ? Icons.mic_off_rounded

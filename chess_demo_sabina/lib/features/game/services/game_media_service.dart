@@ -259,6 +259,17 @@ class GameMediaService {
     }
   }
 
+  void switchCamera() {
+    try {
+      if (_localStream != null && _localStream!.getVideoTracks().isNotEmpty) {
+        Helper.switchCamera(_localStream!.getVideoTracks().first);
+        debugPrint("GAME_MEDIA: Switched camera");
+      }
+    } catch (e) {
+      debugPrint("GAME_MEDIA: Error switching camera: $e");
+    }
+  }
+
   void requestVideo() {
     _sendSignal('video_request', {});
   }
