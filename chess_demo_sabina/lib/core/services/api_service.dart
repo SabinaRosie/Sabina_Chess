@@ -543,4 +543,27 @@ class ApiService {
       return {'success': false, 'error': _formatError(e)};
     }
   }
+
+  static Future<Map<String, dynamic>> trackNotification(String notificationId, String status) async {
+    final token = await getValidToken();
+    if (token == null) return {'success': false, 'error': 'No access token'};
+
+    final url = Uri.parse('${AppConstants.baseUrl}/notifications/track');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'notification_id': notificationId,
+          'status': status,
+        }),
+      ).timeout(const Duration(seconds: 15));
+      return _handleResponse(response, 'Failed to track notification');
+    } catch (e) {
+      return {'success': false, 'error': _formatError(e)};
+    }
+  }
 }

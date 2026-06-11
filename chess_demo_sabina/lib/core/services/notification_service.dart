@@ -212,7 +212,16 @@ class NotificationService with WidgetsBindingObserver {
     );
   }
 
+  void _trackNotificationOpened(Map<String, dynamic> data) {
+    final notificationId = data['notification_id'];
+    if (notificationId != null) {
+      debugPrint("Tracking notification opened: $notificationId");
+      ApiService.trackNotification(notificationId.toString(), 'opened');
+    }
+  }
+
   void _handleNotificationTap(Map<String, dynamic> data) {
+    _trackNotificationOpened(data);
     if (data['type'] == 'chat') {
       final roomId = data['chat_room_id'] ?? data['conversation_id'];
       if (roomId != null) {
