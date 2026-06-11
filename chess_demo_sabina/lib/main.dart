@@ -6,6 +6,7 @@ import './core/routing/route_const.dart';
 import './core/routing/route_generator.dart';
 import './core/services/notification_service.dart';
 import './core/services/foreground_service.dart';
+import './core/services/api_service.dart';
 
 // 🔹 Top-level background message handler
 @pragma('vm:entry-point')
@@ -13,8 +14,15 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Initialize Firebase if needed (some platforms require this in background)
   await Firebase.initializeApp();
   debugPrint("Handling a background message: ${message.messageId}");
-  // The notification is automatically shown by the system for "Notification" type messages.
-  // For "Data" type messages, you would use flutter_local_notifications here.
+  
+  final notificationId = message.data['notification_id'];
+  if (notificationId != null) {
+    try {
+      await ApiService.trackNotification(notificationId.toString(), 'delivered');
+    } catch (e) {
+      debugPrint("Error tracking background delivery: $e");
+    }
+  }
 }
 
 void main() async {

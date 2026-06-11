@@ -110,6 +110,10 @@ class NotificationService with WidgetsBindingObserver {
       _fcm.onTokenRefresh.listen(_registerToken);
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        final notificationId = message.data['notification_id'];
+        if (notificationId != null) {
+          ApiService.trackNotification(notificationId.toString(), 'delivered');
+        }
         if (message.data['type'] == 'incoming_call') {
           _handleIncomingCall(message.data);
         } else {
@@ -223,7 +227,17 @@ class NotificationService with WidgetsBindingObserver {
       onDidReceiveNotificationResponse: (NotificationResponse details) {
         if (details.payload != null) {
           final data = jsonDecode(details.payload!);
-          _handleNotificationTap(data);
+          if (details.actionId == 'dismiss' || details.actionId == 'mark_read') {
+            final notificationId = data['notification_id'];
+            if (notificationId != null) {
+              ApiService.trackNotification(notificationId.toString(), 'dismissed');
+            }
+            if (details.id != null) {
+              _localNotifications.cancel(details.id!);
+            }
+          } else {
+            _handleNotificationTap(data);
+          }
         }
       },
     );
@@ -251,6 +265,7 @@ class NotificationService with WidgetsBindingObserver {
           inputs: [AndroidNotificationActionInput(label: 'Type your message...')],
         ),
         AndroidNotificationAction('mark_read', 'Mark as read'),
+        AndroidNotificationAction('dismiss', 'Dismiss'),
       ],
     );
 
