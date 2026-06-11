@@ -6,6 +6,7 @@ import '../../../core/routing/route_const.dart';
 import '../../../core/routing/route_generator.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/color_utils.dart';
+import '../../../core/services/notification_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -283,6 +284,7 @@ class _LoginPageState extends State<LoginPage> {
                                 );
                                 await prefs.setString('username', result['data']['username']);
                                 await prefs.setInt('userId', result['data']['user_id']);
+                                 NotificationService().registerFcmTokenAfterLogin();
 
                                 // 🔹 Also save credentials if rememberMe or for Biometric setup later
                                 await prefs.setString(
@@ -441,6 +443,7 @@ class _LoginPageState extends State<LoginPage> {
         if (accessToken != null && refreshToken != null) {
           await prefs.setString('accessToken', accessToken);
           await prefs.setString('refreshToken', refreshToken);
+          NotificationService().registerFcmTokenAfterLogin();
           
           if (context.mounted) {
             RouteGenerator.navigateToPageWithoutStack(
@@ -458,6 +461,7 @@ class _LoginPageState extends State<LoginPage> {
             final newAccess = refreshResult['data']['access'];
             await prefs.setString('bio_access_token', newAccess);
             await prefs.setString('accessToken', newAccess);
+            NotificationService().registerFcmTokenAfterLogin();
             RouteGenerator.navigateToPageWithoutStack(
               context,
               Routes.homeRoute,
@@ -480,6 +484,7 @@ class _LoginPageState extends State<LoginPage> {
             await prefs.setString('bio_refresh_token', newRefresh);
             await prefs.setString('accessToken', newAccess);
             await prefs.setString('refreshToken', newRefresh);
+            NotificationService().registerFcmTokenAfterLogin();
             RouteGenerator.navigateToPageWithoutStack(
               context,
               Routes.homeRoute,

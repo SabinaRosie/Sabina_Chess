@@ -566,4 +566,53 @@ class ApiService {
       return {'success': false, 'error': _formatError(e)};
     }
   }
+
+  static Future<Map<String, dynamic>> getNotificationSettings() async {
+    final token = await getValidToken();
+    if (token == null) return {'success': false, 'error': 'No access token'};
+
+    final url = Uri.parse('${AppConstants.baseUrl}/notifications/settings');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 15));
+      return _handleResponse(response, 'Failed to fetch notification settings');
+    } catch (e) {
+      return {'success': false, 'error': _formatError(e)};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateNotificationSettings({
+    required bool allowCalls,
+    required bool allowMessages,
+    required bool allowInvitations,
+    required bool allowSticky,
+  }) async {
+    final token = await getValidToken();
+    if (token == null) return {'success': false, 'error': 'No access token'};
+
+    final url = Uri.parse('${AppConstants.baseUrl}/notifications/settings');
+    try {
+      final response = await http.put(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'allow_calls': allowCalls,
+          'allow_messages': allowMessages,
+          'allow_invitations': allowInvitations,
+          'allow_sticky': allowSticky,
+        }),
+      ).timeout(const Duration(seconds: 15));
+      return _handleResponse(response, 'Failed to update notification settings');
+    } catch (e) {
+      return {'success': false, 'error': _formatError(e)};
+    }
+  }
 }

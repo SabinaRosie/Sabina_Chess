@@ -20,4 +20,5 @@ class Routes {
   static const String videoPlayerRoute = "/video-player";
   static const String selfChatRoute = "/self-chat";
   static const String digitalTwinCallRoute = "/digital-twin-call";
+  static const String notificationSettingsRoute = "/notification-settings";
 }

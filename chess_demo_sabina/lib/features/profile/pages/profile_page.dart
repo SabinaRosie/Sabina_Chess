@@ -554,6 +554,21 @@ class _ProfilePageState extends State<ProfilePage>
             },
           ),
           const SizedBox(height: 28),
+          _sectionTitle('Notifications'),
+          const SizedBox(height: 14),
+          _actionTile(
+            icon: Icons.notifications_outlined,
+            title: 'Notification Settings',
+            subtitle: 'Control alerts for calls, messages & invitations',
+            iconColor: const Color(0xFFe2b96f),
+            onTap: () {
+              RouteGenerator.navigateToPage(
+                context,
+                Routes.notificationSettingsRoute,
+              );
+            },
+          ),
+          const SizedBox(height: 28),
           _sectionTitle('Account'),
           const SizedBox(height: 14),
           _actionTile(

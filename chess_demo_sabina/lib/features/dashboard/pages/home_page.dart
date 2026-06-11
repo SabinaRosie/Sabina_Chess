@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import './dashboard_page.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../profile/pages/users_list_page.dart';
@@ -38,8 +39,18 @@ class _HomePageState extends State<HomePage> {
     _updateUnreadCount();
     _badgeTimer = Timer.periodic(const Duration(seconds: 10), (_) => _updateUnreadCount());
 
-    // 🔹 Start Sticky Notification Service
-    ChessForegroundService.startService();
+    // 🔹 Initialize Sticky Notification Service based on preferences
+    _initForegroundService();
+  }
+
+  Future<void> _initForegroundService() async {
+    final prefs = await SharedPreferences.getInstance();
+    final allowSticky = prefs.getBool('allow_sticky') ?? true;
+    if (allowSticky) {
+      await ChessForegroundService.startService();
+    } else {
+      await ChessForegroundService.stopService();
+    }
   }
 
   Future<void> _updateUnreadCount() async {

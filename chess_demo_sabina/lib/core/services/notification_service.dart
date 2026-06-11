@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
 import './signaling_service.dart';
+import './foreground_service.dart';
 import '../utils/color_utils.dart';
 import '../routing/route_const.dart';
 
@@ -128,6 +131,55 @@ class NotificationService with WidgetsBindingObserver {
 
   void _registerToken(String token) async {
     await SignalingService.registerFcmToken(token);
+    await syncInitialNotificationSettings();
+  }
+
+  Future<void> syncInitialNotificationSettings() async {
+    try {
+      final token = await ApiService.getValidToken();
+      if (token == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString('username') ?? '';
+      if (username.isEmpty) return;
+
+      final syncKey = 'has_initially_synced_notifications_$username';
+      final hasSynced = prefs.getBool(syncKey) ?? false;
+      if (hasSynced) return;
+
+      // Use permission_handler for a reliable cross-platform check
+      final hasPermission = await Permission.notification.isGranted;
+      if (hasPermission) {
+        final result = await ApiService.updateNotificationSettings(
+          allowCalls: true,
+          allowMessages: true,
+          allowInvitations: true,
+          allowSticky: true,
+        );
+        if (result['success'] == true) {
+          await prefs.setBool(syncKey, true);
+          // Persist sticky pref so home_page respects it on next load
+          await prefs.setBool('allow_sticky', true);
+          // Start foreground service immediately
+          await ChessForegroundService.startService();
+          debugPrint("FCM_SYNC: All notifications enabled and foreground service started for $username.");
+        }
+      }
+    } catch (e) {
+      debugPrint("FCM_SYNC_ERROR: Error syncing initial notification settings: $e");
+    }
+  }
+
+  Future<void> registerFcmTokenAfterLogin() async {
+    try {
+      final token = await _fcm.getToken();
+      if (token != null) {
+        await SignalingService.registerFcmToken(token);
+        await syncInitialNotificationSettings();
+      }
+    } catch (e) {
+      debugPrint("FCM_SYNC_ERROR: Error registering token after login: $e");
+    }
   }
 
   void _setupLocalNotifications() async {

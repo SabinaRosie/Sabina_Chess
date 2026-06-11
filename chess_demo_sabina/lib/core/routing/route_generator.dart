@@ -21,6 +21,7 @@ import '../../features/video_playlist/presentation/screens/video_player_screen.d
 import '../../features/video_playlist/models/video_model.dart';
 import '../../features/ai_chat/pages/self_chat_screen.dart';
 import '../../features/ai_chat/pages/digital_twin_call_screen.dart';
+import '../../features/profile/pages/notification_settings_page.dart';
 import './route_const.dart';
 
 class RouteGenerator {
@@ -138,6 +139,9 @@ class RouteGenerator {
 
       case Routes.digitalTwinCallRoute:
         return MaterialPageRoute(builder: (_) => const DigitalTwinCallScreen());
+
+      case Routes.notificationSettingsRoute:
+        return MaterialPageRoute(builder: (_) => const NotificationSettingsPage());
 
       default:
         return MaterialPageRoute(
