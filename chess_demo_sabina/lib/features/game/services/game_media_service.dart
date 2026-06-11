@@ -22,8 +22,12 @@ class GameMediaService {
   final ValueNotifier<bool> isOpponentMuted = ValueNotifier<bool>(false);
   final ValueNotifier<bool> isOpponentVideoEnabled = ValueNotifier<bool>(false);
   final ValueNotifier<bool> isRecordingNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> isRemoteMutedLocally = ValueNotifier<bool>(false);
   DateTime? recordingStartTime;
   int? lastRecordingDuration;
+
+  bool _isRemoteDescriptionSet = false;
+  final List<RTCIceCandidate> _remoteCandidatesQueue = [];
 
   final _videoRequestController = StreamController<void>.broadcast();
   Stream<void> get onVideoRequest => _videoRequestController.stream;
@@ -225,6 +229,16 @@ class GameMediaService {
     }
   }
 
+  void toggleRemoteAudioLocally() {
+    if (_remoteStream != null) {
+      final isCurrentlyMuted = isRemoteMutedLocally.value;
+      for (var track in _remoteStream!.getAudioTracks()) {
+        track.enabled = isCurrentlyMuted; // If currently muted, we want to unmute (enable = true)
+      }
+      isRemoteMutedLocally.value = !isCurrentlyMuted;
+    }
+  }
+
   Future<void> toggleVideo(bool enabled) async {
     if (_localStream != null) {
       for (var track in _localStream!.getVideoTracks()) {
@@ -303,6 +317,9 @@ class GameMediaService {
       case 'offer':
         debugPrint("GAME_MEDIA_WEBRTC: Received offer, creating answer...");
         await _peerConnection!.setRemoteDescription(RTCSessionDescription(payload, 'offer'));
+        _isRemoteDescriptionSet = true;
+        _processCandidateQueue();
+        
         final constraints = {
           'mandatory': {
             'OfferToReceiveAudio': true,
@@ -316,14 +333,21 @@ class GameMediaService {
 
       case 'answer':
         await _peerConnection!.setRemoteDescription(RTCSessionDescription(payload, 'answer'));
+        _isRemoteDescriptionSet = true;
+        _processCandidateQueue();
         break;
 
       case 'candidate':
-        await _peerConnection!.addCandidate(RTCIceCandidate(
+        final candidate = RTCIceCandidate(
           payload['candidate'],
           payload['sdpMid'],
           payload['sdpMLineIndex'],
-        ));
+        );
+        if (_isRemoteDescriptionSet) {
+          await _peerConnection!.addCandidate(candidate);
+        } else {
+          _remoteCandidatesQueue.add(candidate);
+        }
         break;
 
       case 'toggle_mute':
@@ -369,6 +393,13 @@ class GameMediaService {
         onRemoteEvent?.call('recording_stopped', payload);
         break;
     }
+  }
+
+  void _processCandidateQueue() async {
+    for (var candidate in _remoteCandidatesQueue) {
+      await _peerConnection!.addCandidate(candidate);
+    }
+    _remoteCandidatesQueue.clear();
   }
 
   void _sendSignal(String type, dynamic data) {

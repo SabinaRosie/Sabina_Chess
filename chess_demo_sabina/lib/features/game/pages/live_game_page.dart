@@ -57,6 +57,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
   StreamSubscription? _videoResponseSub;
   bool isRecording = false;
   Timer? _recordTimer;
+  bool _isVideoRequestPending = false;
 
   @override
   void initState() {
@@ -207,6 +208,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
     _videoResponseSub = _mediaService.onVideoResponse.listen((accepted) {
       debugPrint("GAME_MEDIA_UI: Received video response: $accepted");
+      _isVideoRequestPending = false;
       if (accepted) {
         setState(() => isVideoEnabled = true);
         _mediaService.toggleVideo(true);
@@ -1207,6 +1209,20 @@ class _LiveGamePageState extends State<LiveGamePage> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                ValueListenableBuilder<bool>(
+                                  valueListenable: _mediaService.isRemoteMutedLocally,
+                                  builder: (context, isRemoteMuted, _) {
+                                    return GestureDetector(
+                                      onTap: () => _mediaService.toggleRemoteAudioLocally(),
+                                      child: Icon(
+                                        isRemoteMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                                        color: isRemoteMuted ? Colors.redAccent : Colors.white,
+                                        size: 14,
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 4),
                                 const Icon(
                                   Icons.live_tv_rounded,
                                   color: Colors.redAccent,
@@ -1275,11 +1291,26 @@ class _LiveGamePageState extends State<LiveGamePage> {
       setState(() => isVideoEnabled = false);
       _mediaService.toggleVideo(false);
     } else {
+      if (_isVideoRequestPending) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Please wait for opponent's response...")),
+        );
+        return;
+      }
+      
+      _isVideoRequestPending = true;
       // Send request to other player
       _mediaService.requestVideo();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Video call request sent to opponent...")),
       );
+      
+      // Reset pending flag after 15 seconds if no response
+      Timer(const Duration(seconds: 15), () {
+        if (mounted) {
+          _isVideoRequestPending = false;
+        }
+      });
     }
   }
 
