@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../utils/const.dart';
+import '../utils/app_logger.dart';
 import './api_service.dart';
 
 class SignalingService {
@@ -43,7 +43,7 @@ class SignalingService {
         body: jsonEncode({'token': token}),
       );
     } catch (e) {
-      debugPrint("FCM Register Error: $e");
+      AppLogger.e("FCM Register Error", error: e);
     }
   }
 
@@ -103,7 +103,7 @@ class SignalingService {
         return parsedList;
       }
     } catch (e) {
-      debugPrint("ICE Servers Error (using fallback): $e");
+      AppLogger.w("ICE Servers Error (using fallback)", error: e);
     }
     // 🔹 Reliable fallback with Open Relay and User TURN servers for cross-network calls
     return [
@@ -167,7 +167,7 @@ class SignalingService {
       _notificationChannel = WebSocketChannel.connect(url);
       return _notificationChannel!.stream;
     } catch (e) {
-      debugPrint("Notification WS Error: $e");
+      AppLogger.e("Notification WS Error", error: e);
       return null;
     }
   }
@@ -187,7 +187,7 @@ class SignalingService {
       _callChannel = WebSocketChannel.connect(url);
       return _callChannel!.stream;
     } catch (e) {
-      debugPrint("Call WS Error: $e");
+      AppLogger.e("Call WS Error", error: e);
       return null;
     }
   }

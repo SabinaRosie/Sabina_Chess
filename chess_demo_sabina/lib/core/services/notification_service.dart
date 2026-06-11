@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import './signaling_service.dart';
 import './foreground_service.dart';
 import '../utils/color_utils.dart';
+import '../utils/app_logger.dart';
 import '../routing/route_const.dart';
 
 class NotificationService with WidgetsBindingObserver {
@@ -63,7 +64,7 @@ class NotificationService with WidgetsBindingObserver {
       ));
       _ringtonePlayer.setVolume(1.0);
     } catch (e) {
-      debugPrint("Warning: Could not configure global audio context: $e");
+      AppLogger.w("Could not configure global audio context", error: e);
     }
   }
 
@@ -162,11 +163,11 @@ class NotificationService with WidgetsBindingObserver {
           await prefs.setBool('allow_sticky', true);
           // Start foreground service immediately
           await ChessForegroundService.startService();
-          debugPrint("FCM_SYNC: All notifications enabled and foreground service started for $username.");
+          AppLogger.i("FCM_SYNC: All notifications enabled and foreground service started for $username.");
         }
       }
     } catch (e) {
-      debugPrint("FCM_SYNC_ERROR: Error syncing initial notification settings: $e");
+      AppLogger.e("FCM_SYNC_ERROR: Error syncing initial notification settings", error: e);
     }
   }
 
@@ -178,7 +179,7 @@ class NotificationService with WidgetsBindingObserver {
         await syncInitialNotificationSettings();
       }
     } catch (e) {
-      debugPrint("FCM_SYNC_ERROR: Error registering token after login: $e");
+      AppLogger.e("FCM_SYNC_ERROR: Error registering token after login", error: e);
     }
   }
 
@@ -267,7 +268,7 @@ class NotificationService with WidgetsBindingObserver {
   void _trackNotificationOpened(Map<String, dynamic> data) {
     final notificationId = data['notification_id'];
     if (notificationId != null) {
-      debugPrint("Tracking notification opened: $notificationId");
+      AppLogger.d("Tracking notification opened: $notificationId");
       ApiService.trackNotification(notificationId.toString(), 'opened');
     }
   }
@@ -632,7 +633,7 @@ class NotificationService with WidgetsBindingObserver {
         _invitationCountController.add(_currentInvitationCount);
       }
     } catch (e) {
-      debugPrint("Error updating invitation count: $e");
+      AppLogger.e("Error updating invitation count", error: e);
     }
   }
   

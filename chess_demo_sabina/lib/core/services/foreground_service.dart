@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:intl/intl.dart';
+import '../utils/app_logger.dart';
 
 
 
@@ -33,7 +34,7 @@ class ChessTaskHandler extends TaskHandler {
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
-    debugPrint("ChessTaskHandler: Started");
+    AppLogger.i("ChessTaskHandler: Started");
     _updateNotification();
   }
 
@@ -64,7 +65,7 @@ class ChessTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
-    debugPrint("ChessTaskHandler: Destroyed");
+    AppLogger.i("ChessTaskHandler: Destroyed");
   }
 
   @override

@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/const.dart';
+import '../utils/app_logger.dart';
 
 
 class ApiService {
@@ -325,7 +325,7 @@ class ApiService {
         }
       }
     } catch (e) {
-      debugPrint('Token parse error: $e');
+      AppLogger.w('Token parse error', error: e);
     }
 
     return accessToken;
@@ -503,16 +503,16 @@ class ApiService {
       // Verify the file actually exists before trying to upload
       final file = File(filePath);
       final fileExists = await file.exists();
-      debugPrint('[RECORDING_UPLOAD] File path: $filePath');
-      debugPrint('[RECORDING_UPLOAD] File exists: $fileExists');
+      AppLogger.d('[RECORDING_UPLOAD] File path: $filePath');
+      AppLogger.d('[RECORDING_UPLOAD] File exists: $fileExists');
 
       if (!fileExists) {
-        debugPrint('[RECORDING_UPLOAD] ERROR: File does not exist at path: $filePath');
+        AppLogger.e('[RECORDING_UPLOAD] File does not exist at path: $filePath');
         return {'success': false, 'error': 'Recording file not found at: $filePath'};
       }
 
       final fileSize = await file.length();
-      debugPrint('[RECORDING_UPLOAD] File size: ${fileSize ~/ 1024} KB');
+      AppLogger.d('[RECORDING_UPLOAD] File size: ${fileSize ~/ 1024} KB');
 
       final request = http.MultipartRequest('POST', url);
       request.headers['Authorization'] = 'Bearer $token';
@@ -532,14 +532,14 @@ class ApiService {
         ),
       );
 
-      debugPrint('[RECORDING_UPLOAD] Sending to $url...');
+      AppLogger.d('[RECORDING_UPLOAD] Sending to $url...');
       final streamedResponse = await request.send().timeout(const Duration(seconds: 120));
       final response = await http.Response.fromStream(streamedResponse);
-      debugPrint('[RECORDING_UPLOAD] Response status: ${response.statusCode}');
-      debugPrint('[RECORDING_UPLOAD] Response body: ${response.body}');
+      AppLogger.d('[RECORDING_UPLOAD] Response status: ${response.statusCode}');
+      AppLogger.d('[RECORDING_UPLOAD] Response body: ${response.body}');
       return _handleResponse(response, 'Failed to upload recording');
     } catch (e) {
-      debugPrint('[RECORDING_UPLOAD] Exception: $e');
+      AppLogger.e('[RECORDING_UPLOAD] Exception', error: e);
       return {'success': false, 'error': _formatError(e)};
     }
   }
