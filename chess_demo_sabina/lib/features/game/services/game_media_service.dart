@@ -249,20 +249,6 @@ class GameMediaService {
       _sendSignal('toggle_video', {'isVideoEnabled': enabled});
       
       debugPrint("GAME_MEDIA_WEBRTC: toggleVideo($enabled), isCaller: $_isCaller");
-      
-      // Renegotiate to ensure peer sees the track state change
-      if (enabled) {
-        // Wait slightly for track to be fully active
-        await Future.delayed(const Duration(milliseconds: 300));
-        
-        if (_isCaller) {
-          debugPrint("GAME_MEDIA_WEBRTC: Renegotiating as caller...");
-          await _createOffer();
-        } else {
-          debugPrint("GAME_MEDIA_WEBRTC: Requesting renegotiation as receiver...");
-          _sendSignal('renegotiate_request', {});
-        }
-      }
 
       // Force update of local notifier
       localStreamNotifier.value = null;

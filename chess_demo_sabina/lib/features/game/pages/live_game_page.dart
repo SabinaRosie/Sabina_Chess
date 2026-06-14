@@ -53,8 +53,6 @@ class _LiveGamePageState extends State<LiveGamePage> {
   bool isVideoEnabled = false;
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
-  StreamSubscription? _videoRequestSub;
-  StreamSubscription? _videoResponseSub;
   bool isRecording = false;
   Timer? _recordTimer;
   bool _isVideoRequestPending = false;
@@ -199,28 +197,8 @@ class _LiveGamePageState extends State<LiveGamePage> {
       }
     };
 
-    _videoRequestSub = _mediaService.onVideoRequest.listen((_) {
-      _showVideoRequestDialog();
-    });
-
     bool isCaller = widget.userColor == 'white';
     _mediaService.connect(widget.gameId, token, isCaller);
-
-    _videoResponseSub = _mediaService.onVideoResponse.listen((accepted) {
-      debugPrint("GAME_MEDIA_UI: Received video response: $accepted");
-      _isVideoRequestPending = false;
-      if (accepted) {
-        setState(() => isVideoEnabled = true);
-        _mediaService.toggleVideo(true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Opponent accepted video call!")),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Opponent declined video call.")),
-        );
-      }
-    });
 
     // 🔹 Add a timeout for synchronization (increased to 60s)
     Timer(const Duration(seconds: 60), () {
@@ -393,6 +371,27 @@ class _LiveGamePageState extends State<LiveGamePage> {
             backgroundColor: Colors.green,
           ),
         );
+        break;
+
+      case 'video_request':
+        _showVideoRequestDialog();
+        break;
+
+      case 'video_response':
+        final accepted = data['accepted'] ?? false;
+        debugPrint("GAME_MEDIA_UI: Received video response: $accepted");
+        _isVideoRequestPending = false;
+        if (accepted) {
+          setState(() => isVideoEnabled = true);
+          _mediaService.toggleVideo(true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Opponent accepted video call!")),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Opponent declined video call.")),
+          );
+        }
         break;
     }
   }
@@ -705,8 +704,6 @@ class _LiveGamePageState extends State<LiveGamePage> {
     _heartbeatTimer?.cancel();
     _recordTimer?.cancel();
     _channel?.sink.close();
-    _videoRequestSub?.cancel();
-    _videoResponseSub?.cancel();
     _mediaService.dispose();
     _localRenderer.dispose();
     _remoteRenderer.dispose();
@@ -728,6 +725,18 @@ class _LiveGamePageState extends State<LiveGamePage> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
+          backgroundColor: AppColors.surfaceColor,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () async {
+              final confirm = await _showQuitConfirmation();
+              if (confirm == true) {
+                await _stopRecording();
+                if (mounted) Navigator.pop(context);
+              }
+            },
+          ),
           title: const Text(
             "Live Chess",
             style: TextStyle(
@@ -735,8 +744,6 @@ class _LiveGamePageState extends State<LiveGamePage> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          backgroundColor: AppColors.surfaceColor,
-          elevation: 0,
           actions: [
             IconButton(
               icon: const Icon(Icons.flag_rounded, color: Colors.redAccent),
@@ -746,7 +753,7 @@ class _LiveGamePageState extends State<LiveGamePage> {
                   builder: (context) => AlertDialog(
                     backgroundColor: AppColors.surfaceColor,
                     title: const Text(
-                      "Resign?",
+                      "Resign Game?",
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -765,12 +772,14 @@ class _LiveGamePageState extends State<LiveGamePage> {
                         ),
                       ),
                       TextButton(
-                        onPressed: () {
+                        onPressed: () async {
                           Navigator.pop(context);
                           _resign();
+                          await _stopRecording();
+                          if (mounted) Navigator.pop(context);
                         },
                         child: const Text(
-                          "Resign",
+                          "Resign & Exit",
                           style: TextStyle(
                             color: Colors.redAccent,
                             fontWeight: FontWeight.bold,
@@ -785,8 +794,12 @@ class _LiveGamePageState extends State<LiveGamePage> {
             ),
             IconButton(
               icon: const Icon(Icons.handshake_rounded, color: Colors.amber),
-              onPressed: _offerDraw,
-              tooltip: "Offer Draw",
+              onPressed: () async {
+                _offerDraw();
+                await _stopRecording();
+                if (mounted) Navigator.pop(context);
+              },
+              tooltip: "Offer Draw & Exit",
             ),
             if (!isVideoEnabled) ...[
               IconButton(
@@ -812,8 +825,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
                   isVideoEnabled
                       ? Icons.videocam_rounded
                       : Icons.videocam_off_rounded,
-                  color: isVideoEnabled ? Colors.cyanAccent : Colors.white54,
-                  shadows: isVideoEnabled
+                  color: _isVideoRequestPending
+                      ? Colors.white24 // Disabled looking
+                      : (isVideoEnabled ? Colors.cyanAccent : Colors.white54),
+                  shadows: (isVideoEnabled && !_isVideoRequestPending)
                       ? [
                           Shadow(
                             color: Colors.cyanAccent.withOpacity(0.6),
@@ -822,158 +837,65 @@ class _LiveGamePageState extends State<LiveGamePage> {
                         ]
                       : [],
                 ),
-                onPressed: _handleVideoToggle,
+                onPressed: _isVideoRequestPending ? null : _handleVideoToggle,
               ),
-              if (isConnected) // Both users on call/game
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    GestureDetector(
-                      onTap: () async {
-                        if (_mediaService.isRecordingNotifier.value) {
-                          await _mediaService.stopRecording(
-                            widget.opponentUsername,
-                          );
-                          final durSecs =
-                              _mediaService.lastRecordingDuration ?? 0;
-                          final durStr =
-                              '${(durSecs ~/ 60).toString().padLeft(2, '0')}:${(durSecs % 60).toString().padLeft(2, '0')}';
-                          if (mounted) {
-                            showDialog(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                backgroundColor: const Color(0xFF1E1E2C),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
+            ],
+            if (isConnected)
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap: () async {
+                      if (_mediaService.isRecordingNotifier.value) {
+                        await _stopRecording();
+                      } else {
+                        await _mediaService.startRecording();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                const Icon(
+                                  Icons.fiber_manual_record,
+                                  color: Colors.red,
+                                  size: 16,
                                 ),
-                                title: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle_rounded,
-                                      color: Colors.greenAccent,
-                                      size: 28,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    const Text(
-                                      'Recording Saved',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                content: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.05),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: Colors.white12,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          const Icon(
-                                            Icons.timer_rounded,
-                                            color: AppColors.secondaryColor,
-                                            size: 22,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            durStr,
-                                            style: const TextStyle(
-                                              color: AppColors.secondaryColor,
-                                              fontSize: 28,
-                                              fontWeight: FontWeight.bold,
-                                              fontFamily: 'monospace',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      'Your screen recording has been saved successfully.',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 13,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(),
-                                    child: const Text(
-                                      'OK',
-                                      style: TextStyle(
-                                        color: AppColors.secondaryColor,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-                        } else {
-                          await _mediaService.startRecording();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                children: [
-                                  Icon(
-                                    Icons.fiber_manual_record,
-                                    color: Colors.red,
-                                    size: 16,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Text('Screen Recording Started'),
-                                ],
-                              ),
-                              backgroundColor: const Color(0xFF2A2A3A),
+                                const SizedBox(width: 8),
+                                const Text('Screen Recording Started'),
+                              ],
                             ),
-                          );
-                        }
-                      },
-                      child: Icon(
-                        isRecording
-                            ? Icons.stop_circle_rounded
-                            : Icons.fiber_manual_record_rounded,
-                        color: Colors.red,
-                        size: isRecording ? 24 : 20,
-                        shadows: [
-                          Shadow(
-                            color: Colors.red.withOpacity(0.8),
-                            blurRadius: 16,
+                            backgroundColor: const Color(0xFF2A2A3A),
                           ),
-                        ],
+                        );
+                      }
+                    },
+                    child: Icon(
+                      isRecording
+                          ? Icons.stop_circle_rounded
+                          : Icons.fiber_manual_record_rounded,
+                      color: Colors.red,
+                      size: isRecording ? 24 : 20,
+                      shadows: [
+                        Shadow(
+                          color: Colors.red.withOpacity(0.8),
+                          blurRadius: 16,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isRecording && _mediaService.recordingStartTime != null)
+                    Text(
+                      '${(DateTime.now().difference(_mediaService.recordingStartTime!).inMinutes).toString().padLeft(2, '0')}:${(DateTime.now().difference(_mediaService.recordingStartTime!).inSeconds % 60).toString().padLeft(2, '0')}',
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
                       ),
                     ),
-                    if (isRecording && _mediaService.recordingStartTime != null)
-                      Text(
-                        '${(DateTime.now().difference(_mediaService.recordingStartTime!).inMinutes).toString().padLeft(2, '0')}:${(DateTime.now().difference(_mediaService.recordingStartTime!).inSeconds % 60).toString().padLeft(2, '0')}',
-                        style: const TextStyle(
-                          color: Colors.redAccent,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                  ],
-                ),
-              const SizedBox(width: 8),
-            ],
+                ],
+              ),
+            const SizedBox(width: 8),
           ],
         ),
         body: Container(
@@ -1033,6 +955,26 @@ class _LiveGamePageState extends State<LiveGamePage> {
 
                     // ── The Board ──
                     _buildBoard(),
+                    
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.exit_to_app_rounded, color: Colors.white, size: 18),
+                      label: const Text("Quit Game", style: TextStyle(color: Colors.white)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent.withOpacity(0.8),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                      onPressed: () async {
+                        final confirm = await _showQuitConfirmation();
+                        if (confirm == true) {
+                          await _stopRecording();
+                          if (mounted) {
+                            Navigator.pop(context);
+                          }
+                        }
+                      },
+                    ),
 
                     const Spacer(),
 
@@ -1058,13 +1000,13 @@ class _LiveGamePageState extends State<LiveGamePage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(6),
+        padding: const EdgeInsets.all(5),
         decoration: BoxDecoration(
-          color: isActive ? Colors.black54 : Colors.redAccent.withOpacity(0.7),
+          color: isActive ? Colors.black.withOpacity(0.4) : Colors.redAccent.withOpacity(0.8),
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white24, width: 1),
+          border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
         ),
-        child: Icon(icon, color: Colors.white, size: 18),
+        child: Icon(icon, color: Colors.white.withOpacity(0.9), size: 14),
       ),
     );
   }
@@ -1141,10 +1083,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
                         if (isEnabled) ...[
                           _buildCompactControl(
                             icon: Icons.flip_camera_ios_rounded,
-                            isActive: false,
+                            isActive: true,
                             onTap: () => _mediaService.switchCamera(),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4),
                         ],
                         _buildCompactControl(
                           icon: isMicMuted
@@ -1156,47 +1098,17 @@ class _LiveGamePageState extends State<LiveGamePage> {
                             _mediaService.toggleMic(!isMicMuted);
                           },
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
                         _buildCompactControl(
                           icon: isVideoEnabled
-                              ? Icons.videocam_off_rounded
-                              : Icons.videocam_rounded,
-                          isActive: false,
-                          onTap: _handleVideoToggle,
+                              ? Icons.videocam_rounded
+                              : Icons.videocam_off_rounded,
+                          isActive: isVideoEnabled,
+                          onTap: _isVideoRequestPending ? () {} : _handleVideoToggle,
                         ),
-                        if (isConnected) ...[
-                          const SizedBox(width: 6),
-                          _buildCompactControl(
-                            icon: isRecording
-                                ? Icons.stop_circle
-                                : Icons.fiber_manual_record,
-                            isActive: isRecording,
-                            onTap: () async {
-                              if (_mediaService.isRecordingNotifier.value) {
-                                await _mediaService.stopRecording(
-                                  widget.opponentUsername,
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Recording Saved to Database',
-                                    ),
-                                  ),
-                                );
-                              } else {
-                                await _mediaService.startRecording();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Recording Started'),
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                        ],
                       ],
-                    )
-                  : (isEnabled
+                        )
+                      : (isEnabled
                         ? Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
@@ -1299,8 +1211,10 @@ class _LiveGamePageState extends State<LiveGamePage> {
       }
       
       _isVideoRequestPending = true;
-      // Send request to other player
-      _mediaService.requestVideo();
+      // Send request to other player instantly via Game WebSocket
+      _channel?.sink.add(jsonEncode({
+        'action': 'video_request',
+      }));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Video call request sent to opponent...")),
       );
@@ -1331,7 +1245,11 @@ class _LiveGamePageState extends State<LiveGamePage> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _mediaService.respondVideo(false);
+              // Send decline response instantly via Game WebSocket
+              _channel?.sink.add(jsonEncode({
+                'action': 'video_response',
+                'accepted': false,
+              }));
             },
             child: const Text(
               "Decline",
@@ -1341,7 +1259,11 @@ class _LiveGamePageState extends State<LiveGamePage> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _mediaService.respondVideo(true);
+              // Send accept response instantly via Game WebSocket
+              _channel?.sink.add(jsonEncode({
+                'action': 'video_response',
+                'accepted': true,
+              }));
               setState(() => isVideoEnabled = true);
               _mediaService.toggleVideo(true);
             },
