@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -7,6 +8,8 @@ import './core/routing/route_generator.dart';
 import './core/services/notification_service.dart';
 import './core/services/foreground_service.dart';
 import './core/services/api_service.dart';
+import './core/utils/app_logger.dart';
+import './core/services/log_sync_service.dart';
 
 // 🔹 Top-level background message handler
 @pragma('vm:entry-point')
@@ -18,7 +21,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final notificationId = message.data['notification_id'];
   if (notificationId != null) {
     try {
-      await ApiService.trackNotification(notificationId.toString(), 'delivered');
+      ApiService.trackNotification(notificationId.toString(), 'delivered');
     } catch (e) {
       debugPrint("Error tracking background delivery: $e");
     }
@@ -27,6 +30,31 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔹 Capture Flutter framework/UI exceptions
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    AppLogger.e(
+      "Unhandled Flutter UI Error: ${details.exceptionAsString()}",
+      error: details.exception,
+      stackTrace: details.stack,
+      feature: "flutter_framework",
+      isFatal: true,
+    );
+  };
+
+  // 🔹 Capture asynchronous exceptions outside Flutter framework
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    AppLogger.e(
+      "Unhandled Async Error: $error",
+      error: error,
+      stackTrace: stack,
+      feature: "async_runtime",
+      isFatal: true,
+    );
+    return true;
+  };
+
   fvp.registerWith();
   
   // 🔹 Initialize Foreground Service (Sticky Notification)
@@ -48,8 +76,12 @@ void main() async {
     NotificationService().init();
   }
 
+  // 🔹 Trigger log sync on startup
+  LogSyncService.syncLogs();
+
   runApp(const MyApp());
 }
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

@@ -11,6 +11,7 @@ import '../../../core/services/api_service.dart';
 import '../widgets/call_overlay_widget.dart';
 import '../../../core/routing/route_const.dart';
 import '../../../core/routing/route_generator.dart';
+import '../../../core/utils/app_logger.dart';
 
 class CallManager {
   static final CallManager _instance = CallManager._internal();
@@ -300,8 +301,8 @@ class CallManager {
       };
 
       await _connectWebSocket();
-    } catch (e) {
-      debugPrint("Call Manager Init Error: $e");
+    } catch (e, s) {
+      AppLogger.e("Call Manager Init Error", error: e, stackTrace: s, feature: "webrtc_calling");
     }
   }
 
@@ -340,9 +341,9 @@ class CallManager {
 
       _startHeartbeat();
       notify();
-    } catch (e) {
+    } catch (e, s) {
       isConnectingWebSocket = false;
-      debugPrint("❌ CallManager WS Connection Setup Failed: $e");
+      AppLogger.e("CallManager WS Connection Setup Failed", error: e, stackTrace: s, feature: "webrtc_calling");
       _handleWsDisconnect();
     }
   }
@@ -473,7 +474,7 @@ class CallManager {
         break;
     }
     } catch (e, stacktrace) {
-      debugPrint("❌ CallManager WebRTC Error in _onWsMessage: $e\n$stacktrace");
+      AppLogger.e("CallManager WebRTC Error in _onWsMessage", error: e, stackTrace: stacktrace, feature: "webrtc_calling");
     }
   }
 
@@ -578,8 +579,8 @@ class CallManager {
       Future.delayed(const Duration(seconds: 10), () {
         _hasAttemptedIceRestart = false;
       });
-    } catch (e) {
-      debugPrint("❌ WebRTC: ICE restart failed: $e");
+    } catch (e, s) {
+      AppLogger.e("WebRTC: ICE restart failed", error: e, stackTrace: s, feature: "webrtc_calling");
       _hasAttemptedIceRestart = false;
     }
   }
@@ -653,8 +654,8 @@ class CallManager {
       } else {
         debugPrint("CallManager: Permissions denied for screen recording");
       }
-    } catch (e) {
-      debugPrint("CallManager: Error starting screen recording: $e");
+    } catch (e, s) {
+      AppLogger.e("CallManager: Error starting screen recording", error: e, stackTrace: s, feature: "call_recording");
     }
   }
 
@@ -684,8 +685,8 @@ class CallManager {
         );
         debugPrint("CallManager: Save screen recording response: $response");
       }
-    } catch (e) {
-      debugPrint("CallManager: Error stopping screen recording: $e");
+    } catch (e, s) {
+      AppLogger.e("CallManager: Error stopping screen recording", error: e, stackTrace: s, feature: "call_recording");
     }
   }
 
