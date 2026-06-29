@@ -233,6 +233,26 @@ class ApiService {
     }
   }
 
+  /// Claim reward coins after watching a rewarded ad
+  static Future<Map<String, dynamic>> claimReward() async {
+    final token = await getValidToken();
+    if (token == null) return {'success': false, 'error': 'No access token'};
+
+    final url = Uri.parse('${AppConstants.baseUrl}/reward/claim');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 15));
+      return _handleResponse(response, 'Failed to claim reward');
+    } catch (e) {
+      return {'success': false, 'error': _formatError(e)};
+    }
+  }
+
   static Future<Map<String, dynamic>> initiatePayment(
     num amount,
     String productId,

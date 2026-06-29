@@ -10,6 +10,7 @@ import './core/services/foreground_service.dart';
 import './core/services/api_service.dart';
 import './core/utils/app_logger.dart';
 import './core/services/log_sync_service.dart';
+import './core/services/reward_ad_service.dart';
 
 // 🔹 Top-level background message handler
 @pragma('vm:entry-point')
@@ -75,6 +76,9 @@ void main() async {
     // Continue app initialization even if Firebase fails (fallback to WS/Polling)
     NotificationService().init();
   }
+
+  // 🔹 Initialize Rewarded Ads
+  await RewardAdService.initialize();
 
   // 🔹 Trigger log sync on startup
   LogSyncService.syncLogs();

@@ -8,6 +8,7 @@ import '../../../core/routing/route_generator.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/services/api_service.dart';
 import '../../payment/services/esewa_service.dart';
+import '../../../core/services/reward_ad_service.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -119,6 +120,28 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+            // ── Watch Ad to Earn Coins Button ──
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _watchAdForCoins();
+                },
+                icon: const Icon(Icons.play_circle_outline_rounded, size: 22),
+                label: const Text(
+                  "Watch Ad (+100 Coins)",
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.amber,
+                  side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -182,6 +205,49 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(error)),
           );
+        }
+      },
+    );
+  }
+
+  void _watchAdForCoins() {
+    if (!RewardAdService.isAdReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Ad is loading, please try again in a moment."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      RewardAdService.loadAd();
+      return;
+    }
+
+    RewardAdService.showAd(
+      onRewardEarned: () async {
+        // User watched the full ad — claim coins from backend
+        final result = await ApiService.claimReward();
+        if (result['success']) {
+          final newBalance = result['data']['coins'] ?? _coins + 100;
+          setState(() => _coins = newBalance);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("🎉 +100 Coins added to your wallet!"),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          // Fallback: update locally even if backend call fails
+          setState(() => _coins += 100);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Coins added locally. Sync issue: ${result['error']}"),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
         }
       },
     );
