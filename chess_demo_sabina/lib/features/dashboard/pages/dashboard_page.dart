@@ -17,7 +17,8 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+class _DashboardPageState extends State<DashboardPage>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
@@ -39,9 +40,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
-    
+
     WidgetsBinding.instance.addObserver(this);
-    _invitationSub = NotificationService().invitationCountStream.listen((count) {
+    _invitationSub = NotificationService().invitationCountStream.listen((
+      count,
+    ) {
       if (mounted) setState(() => _invitationCount = count);
     });
     // Initial fetch
@@ -70,7 +73,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
             SizedBox(width: 12),
             Text(
               "Wallet Balance",
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -107,11 +114,16 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  _payWithEsewa(100, "coins_1000"); // Example: 100 NPR for 1000 coins
+                  _payWithEsewa(
+                    100,
+                    "coins_1000",
+                  ); // Example: 100 NPR for 1000 coins
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryColor,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
                   elevation: 0,
                 ),
                 child: const Text(
@@ -138,7 +150,9 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.amber,
                   side: BorderSide(color: Colors.amber.withOpacity(0.5)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
                 ),
               ),
             ),
@@ -166,7 +180,8 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
     // 2. Launch Native eSewa SDK
     EsewaService.initiatePayment(
-      productId: transactionUuid, // Use UUID as productId to guarantee uniqueness
+      productId:
+          transactionUuid, // Use UUID as productId to guarantee uniqueness
       productName: "Chess Coins ($amount NPR)",
       amount: amount.toString(),
       onSuccess: () async {
@@ -176,12 +191,12 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
           "transaction_uuid": transactionUuid,
           "total_amount": amount.toString(),
           "status": "COMPLETE",
-          "transaction_code": "NATIVE_SDK_SUCCESS" 
+          "transaction_code": "NATIVE_SDK_SUCCESS",
         };
         final encodedData = base64.encode(utf8.encode(jsonEncode(payload)));
-        
+
         final verifyResult = await ApiService.verifyPayment(encodedData);
-        
+
         if (verifyResult['success']) {
           _fetchCoins(); // Update the UI balance
           if (mounted) {
@@ -195,16 +210,20 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Backend Verification Failed: ${verifyResult['error']}")),
+              SnackBar(
+                content: Text(
+                  "Backend Verification Failed: ${verifyResult['error']}",
+                ),
+              ),
             );
           }
         }
       },
       onFailure: (error) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(error)));
         }
       },
     );
@@ -243,7 +262,9 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text("Coins added locally. Sync issue: ${result['error']}"),
+                content: Text(
+                  "Coins added locally. Sync issue: ${result['error']}",
+                ),
                 backgroundColor: Colors.orange,
               ),
             );
@@ -298,15 +319,24 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                         GestureDetector(
                           onTap: _showCoinDialog,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                              border: Border.all(
+                                color: Colors.amber.withOpacity(0.3),
+                              ),
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.monetization_on_rounded, color: Colors.amber, size: 20),
+                                const Icon(
+                                  Icons.monetization_on_rounded,
+                                  color: Colors.amber,
+                                  size: 20,
+                                ),
                                 const SizedBox(width: 8),
                                 Text(
                                   "$_coins",
@@ -330,7 +360,10 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: const LinearGradient(
-                          colors: [AppColors.primaryColor, AppColors.secondaryColor],
+                          colors: [
+                            AppColors.primaryColor,
+                            AppColors.secondaryColor,
+                          ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -343,7 +376,10 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                         ],
                       ),
                       child: const Center(
-                        child: Text('♔', style: TextStyle(fontSize: 54, color: Colors.white)),
+                        child: Text(
+                          '♔',
+                          style: TextStyle(fontSize: 54, color: Colors.white),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 28),
@@ -380,7 +416,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.07),
                           borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: Colors.white.withOpacity(_showInfo ? 0.2 : 0.12)),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(
+                              _showInfo ? 0.2 : 0.12,
+                            ),
+                          ),
                         ),
                         child: Column(
                           children: [
@@ -397,7 +437,9 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                                 ),
                                 const SizedBox(width: 8),
                                 Icon(
-                                  _showInfo ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                  _showInfo
+                                      ? Icons.keyboard_arrow_up
+                                      : Icons.keyboard_arrow_down,
                                   color: AppColors.secondaryColor,
                                   size: 20,
                                 ),
@@ -424,7 +466,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                               const SizedBox(height: 4),
                               const Text(
                                 'Tap to learn about the game',
-                                style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontStyle: FontStyle.italic),
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                ),
                               ),
                             ],
                           ],
@@ -446,12 +492,20 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                             child: OutlinedButton(
                               onPressed: () {
                                 NotificationService().clearInvitationCount();
-                                RouteGenerator.navigateToPage(context, Routes.friendSelectionRoute);
+                                RouteGenerator.navigateToPage(
+                                  context,
+                                  Routes.friendSelectionRoute,
+                                );
                               },
                               style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: AppColors.secondaryColor, width: 2),
+                                side: const BorderSide(
+                                  color: AppColors.secondaryColor,
+                                  width: 2,
+                                ),
                                 foregroundColor: AppColors.secondaryColor,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(32),
+                                ),
                               ),
                               child: const Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -460,7 +514,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                                   SizedBox(width: 10),
                                   Text(
                                     'Play with Friends',
-                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -476,7 +534,10 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                                 decoration: BoxDecoration(
                                   color: Colors.redAccent,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: AppColors.surfaceColor, width: 2),
+                                  border: Border.all(
+                                    color: AppColors.surfaceColor,
+                                    width: 2,
+                                  ),
                                   boxShadow: [
                                     BoxShadow(
                                       color: Colors.redAccent.withOpacity(0.5),
@@ -509,12 +570,17 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                       height: 58,
                       child: ElevatedButton(
                         onPressed: () {
-                          RouteGenerator.navigateToPage(context, Routes.gameRoute);
+                          RouteGenerator.navigateToPage(
+                            context,
+                            Routes.gameRoute,
+                          );
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primaryColor,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(32),
+                          ),
                           elevation: 10,
                           shadowColor: AppColors.primaryColor.withOpacity(0.5),
                         ),
@@ -525,7 +591,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                             SizedBox(width: 8),
                             Text(
                               'Start Playing',
-                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ],
                         ),
@@ -555,9 +625,20 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
           children: [
             Text(emoji, style: const TextStyle(fontSize: 26)),
             const SizedBox(height: 6),
-            Text(title, style: const TextStyle(color: AppColors.secondaryColor, fontWeight: FontWeight.bold, fontSize: 13)),
+            Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.secondaryColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 11), textAlign: TextAlign.center),
+            Text(
+              subtitle,
+              style: const TextStyle(color: Colors.white54, fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),

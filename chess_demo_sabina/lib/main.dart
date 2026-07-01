@@ -45,13 +45,14 @@ void main() async {
   };
 
   // 🔹 Capture asynchronous exceptions outside Flutter framework
+  // Note: isFatal: false — connectivity/async errors are recoverable, not true crashes
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
     AppLogger.e(
       "Unhandled Async Error: $error",
       error: error,
       stackTrace: stack,
       feature: "async_runtime",
-      isFatal: true,
+      isFatal: false,
     );
     return true;
   };

@@ -35,13 +35,29 @@ class AppLogger {
   }
 
   /// General informational message.
-  static void i(String message, {Object? error, StackTrace? stackTrace}) {
+  static void i(String message, {Object? error, StackTrace? stackTrace, String? feature}) {
     _logger.i(message, error: error, stackTrace: stackTrace);
+    if (feature != null) {
+      _saveLogToLocalFile(
+        level: 'INFO',
+        feature: feature,
+        message: message,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   /// Something unexpected but non-fatal.
-  static void w(String message, {Object? error, StackTrace? stackTrace}) {
+  static void w(String message, {Object? error, StackTrace? stackTrace, String? feature}) {
     _logger.w(message, error: error, stackTrace: stackTrace);
+    _saveLogToLocalFile(
+      level: 'WARNING',
+      feature: feature,
+      message: message,
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   /// A failure that needs attention. Supports feature categorization.
