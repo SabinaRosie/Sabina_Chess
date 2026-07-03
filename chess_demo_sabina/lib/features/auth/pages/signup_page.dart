@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../core/routing/route_const.dart';
 import '../../../core/routing/route_generator.dart';
@@ -110,241 +111,257 @@ class _SignupPageState extends State<SignupPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: AppColors.woodGradient,
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    const SizedBox(height: 60),
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: AppColors.woodGradient,
+              ),
+            ),
+            child: SafeArea(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 60),
 
-                    // 🔹 Title
-                    Text(
-                      "Create Account",
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-                    Text(
-                      "Join the chess community today!",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.textSecondary),
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    if (true) ...[
-                      // ================= NAME =================
-                      _buildLabel("NAME"),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        style: const TextStyle(color: Colors.white),
-                        onChanged: (value) => name = value,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return "Enter name";
-                          }
-                          if (!isValidName(value)) return "Invalid name";
-                          return null;
-                        },
-                        decoration: _inputDecoration("Enter name"),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // ================= EMAIL =================
-                      _buildLabel("EMAIL ADDRESS"),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        style: const TextStyle(color: Colors.white),
-                        onChanged: (value) => email = value.trim(),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return "Enter email";
-                          }
-                          if (!isValidEmail(value)) return "Enter valid email";
-                          return null;
-                        },
-                        decoration: _inputDecoration("Enter email"),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // ================= PASSWORD =================
-                      _buildLabel("PASSWORD"),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        style: const TextStyle(color: Colors.white),
-                        obscureText: !showPassword,
-                        onChanged: (value) => password = value,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Enter password';
-                          }
-                          return getPasswordError(value);
-                        },
-                        decoration: _inputDecoration("Enter password").copyWith(
-                          errorMaxLines: 10,
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              showPassword
-                                  ? Icons.visibility
-                                  : Icons.visibility_off,
-                              color: Colors.white38,
-                            ),
-                            onPressed: () =>
-                                setState(() => showPassword = !showPassword),
+                        // 🔹 Title
+                        Text(
+                          "Create Account",
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
                           ),
                         ),
-                      ),
 
-                      const SizedBox(height: 20),
+                        const SizedBox(height: 20),
+                        Text(
+                          "Join the chess community today!",
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
 
-                      // ================= CONFIRM PASSWORD =================
-                      _buildLabel("CONFIRM PASSWORD"),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        style: const TextStyle(color: Colors.white),
-                        obscureText: !showConfirmPassword,
-                        onChanged: (value) => confirmPassword = value,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return "Confirm password";
-                          }
-                          if (value != password) {
-                            return "Passwords do not match";
-                          }
-                          return null;
-                        },
-                        decoration: _inputDecoration("Confirm password")
-                            .copyWith(
+                        const SizedBox(height: 40),
+
+                        if (true) ...[
+                          // ================= NAME =================
+                          _buildLabel("NAME"),
+                          const SizedBox(height: 4),
+                          TextFormField(
+                            style: const TextStyle(color: Colors.white),
+                            onChanged: (value) => name = value,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return "Enter name";
+                              }
+                              if (!isValidName(value)) return "Invalid name";
+                              return null;
+                            },
+                            decoration: _inputDecoration("Enter name"),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // ================= EMAIL =================
+                          _buildLabel("EMAIL ADDRESS"),
+                          const SizedBox(height: 4),
+                          TextFormField(
+                            style: const TextStyle(color: Colors.white),
+                            onChanged: (value) => email = value.trim(),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return "Enter email";
+                              }
+                              if (!isValidEmail(value)) return "Enter valid email";
+                              return null;
+                            },
+                            decoration: _inputDecoration("Enter email"),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // ================= PASSWORD =================
+                          _buildLabel("PASSWORD"),
+                          const SizedBox(height: 4),
+                          TextFormField(
+                            style: const TextStyle(color: Colors.white),
+                            obscureText: !showPassword,
+                            onChanged: (value) => password = value,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Enter password';
+                              }
+                              return getPasswordError(value);
+                            },
+                            decoration: _inputDecoration("Enter password").copyWith(
+                              errorMaxLines: 10,
                               suffixIcon: IconButton(
                                 icon: Icon(
-                                  showConfirmPassword
+                                  showPassword
                                       ? Icons.visibility
                                       : Icons.visibility_off,
                                   color: Colors.white38,
                                 ),
-                                onPressed: () => setState(
-                                  () => showConfirmPassword =
-                                      !showConfirmPassword,
-                                ),
+                                onPressed: () =>
+                                    setState(() => showPassword = !showPassword),
                               ),
                             ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 30),
-
-                    // ================= PRIMARY BUTTON =================
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryColor,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
                           ),
-                          elevation: 5,
-                        ),
-                        onPressed: () async {
-                          if (_formKey.currentState!.validate()) {
-                            setState(() => loader = true);
 
-                            final result = await ApiService.signup(
-                              name!,
-                              email!,
-                              password!,
-                            );
-                            if (context.mounted) {
-                              setState(() => loader = false);
-                              if (result['success']) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Account created successfully! Please login.',
+                          const SizedBox(height: 20),
+
+                          // ================= CONFIRM PASSWORD =================
+                          _buildLabel("CONFIRM PASSWORD"),
+                          const SizedBox(height: 4),
+                          TextFormField(
+                            style: const TextStyle(color: Colors.white),
+                            obscureText: !showConfirmPassword,
+                            onChanged: (value) => confirmPassword = value,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return "Confirm password";
+                              }
+                              if (value != password) {
+                                return "Passwords do not match";
+                              }
+                              return null;
+                            },
+                            decoration: _inputDecoration("Confirm password")
+                                .copyWith(
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      showConfirmPassword
+                                          ? Icons.visibility
+                                          : Icons.visibility_off,
+                                      color: Colors.white38,
                                     ),
-                                    backgroundColor: Colors.green,
-                                    duration: Duration(seconds: 3),
+                                    onPressed: () => setState(
+                                      () => showConfirmPassword =
+                                          !showConfirmPassword,
+                                    ),
                                   ),
+                                ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 30),
+
+                        // ================= PRIMARY BUTTON =================
+                        SizedBox(
+                          width: double.infinity,
+                          height: 55,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              elevation: 5,
+                            ),
+                            onPressed: () async {
+                              if (_formKey.currentState!.validate()) {
+                                setState(() => loader = true);
+
+                                final result = await ApiService.signup(
+                                  name!,
+                                  email!,
+                                  password!,
                                 );
-                                RouteGenerator.navigateToPageWithoutStack(
+                                if (context.mounted) {
+                                  setState(() => loader = false);
+                                  if (result['success']) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Account created successfully! Please login.',
+                                        ),
+                                        backgroundColor: Colors.green,
+                                        duration: Duration(seconds: 3),
+                                      ),
+                                    );
+                                    RouteGenerator.navigateToPageWithoutStack(
+                                      context,
+                                      Routes.loginRoute,
+                                    );
+                                  } else {
+                                    _showErrorDialog(result['error']);
+                                  }
+                                }
+                              }
+                            },
+                            child: const Text(
+                                    "Sign Up",
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // ================= NAVIGATION LINK =================
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              "Already have an account? ",
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                RouteGenerator.navigateToPage(
                                   context,
                                   Routes.loginRoute,
                                 );
-                              } else {
-                                _showErrorDialog(result['error']);
-                              }
-                            }
-                          }
-                        },
-                        child: loader
-                            ? const CircularProgressIndicator(
-                                color: Colors.white,
-                              )
-                            : Text(
-                                "Sign Up",
-                                style: const TextStyle(
-                                  fontSize: 18,
+                              },
+                              child: const Text(
+                                "Login",
+                                style: TextStyle(
+                                  color: AppColors.secondaryColor,
                                   fontWeight: FontWeight.bold,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: AppColors.secondaryColor,
                                 ),
                               ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ================= NAVIGATION LINK =================
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text(
-                          "Already have an account? ",
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            RouteGenerator.navigateToPage(
-                              context,
-                              Routes.loginRoute,
-                            );
-                          },
-                          child: const Text(
-                            "Login",
-                            style: TextStyle(
-                              color: AppColors.secondaryColor,
-                              fontWeight: FontWeight.bold,
-                              decoration: TextDecoration.underline,
-                              decorationColor: AppColors.secondaryColor,
                             ),
-                          ),
+                          ],
                         ),
+
+                        const SizedBox(height: 30),
                       ],
                     ),
-
-                    const SizedBox(height: 30),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+          if (loader)
+            Positioned.fill(
+              child: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.5),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.secondaryColor,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -64,360 +65,376 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: AppColors.woodGradient,
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 60),
-
-                    // 🔹 Welcome Text
-                    const Center(
-                      child: Text(
-                        "Welcome",
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 50),
-
-                    // ================= EMAIL =================
-                    _buildLabel("EMAIL"),
-                    const SizedBox(height: 4),
-
-                    TextFormField(
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: "Enter email",
-                        hintStyle: const TextStyle(color: Colors.white38),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.05),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 16,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: const BorderSide(color: Colors.white12),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: const BorderSide(
-                            color: AppColors.secondaryColor,
-                          ),
-                        ),
-                      ),
-                      onChanged: (value) => email = value.trim(),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return "Enter email";
-                        }
-                        if (!isValidEmail(value)) {
-                          return "Enter valid email";
-                        }
-                        return null;
-                      },
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ================= PASSWORD =================
-                    _buildLabel("PASSWORD"),
-                    const SizedBox(height: 4),
-
-                    TextFormField(
-                      obscureText: !showPassword,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: "Enter password",
-                        hintStyle: const TextStyle(color: Colors.white38),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.05),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 16,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: const BorderSide(color: Colors.white12),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: const BorderSide(
-                            color: AppColors.secondaryColor,
-                          ),
-                        ),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            showPassword
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                            color: Colors.white38,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              showPassword = !showPassword;
-                            });
-                          },
-                        ),
-                      ),
-                      onChanged: (value) => password = value,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return "Enter password";
-                        }
-                        if (!isValidPassword(value)) {
-                          return "Password must be at least 6 characters";
-                        }
-                        return null;
-                      },
-                    ),
-
-                    const SizedBox(height: 6),
-
-                    // 🔹 Remember Me + Forgot Password row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: AppColors.woodGradient,
+              ),
+            ),
+            child: SafeArea(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Remember Me
-                        GestureDetector(
-                          onTap: () => setState(() => _rememberMe = !_rememberMe),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: Checkbox(
-                                  value: _rememberMe,
-                                  onChanged: (val) => setState(() => _rememberMe = val ?? false),
-                                  activeColor: AppColors.secondaryColor,
-                                  checkColor: Colors.white,
-                                  side: const BorderSide(color: Colors.white38),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Remember me',
-                                style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
+                        const SizedBox(height: 60),
+
+                        // 🔹 Welcome Text
+                        const Center(
+                          child: Text(
+                            "Welcome",
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                              letterSpacing: 1.5,
+                            ),
                           ),
                         ),
 
-                        // Forgot Password
-                        TextButton(
-                          onPressed: () {
-                            RouteGenerator.navigateToPage(
-                              context,
-                              Routes.forgotPasswordRoute,
-                            );
+                        const SizedBox(height: 50),
+
+                        // ================= EMAIL =================
+                        _buildLabel("EMAIL"),
+                        const SizedBox(height: 4),
+
+                        TextFormField(
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: "Enter email",
+                            hintStyle: const TextStyle(color: Colors.white38),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.05),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 16,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: const BorderSide(color: Colors.white12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: const BorderSide(
+                                color: AppColors.secondaryColor,
+                              ),
+                            ),
+                          ),
+                          onChanged: (value) => email = value.trim(),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return "Enter email";
+                            }
+                            if (!isValidEmail(value)) {
+                              return "Enter valid email";
+                            }
+                            return null;
                           },
-                          child: const Text(
-                            "Forgot Password?",
-                            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-                          ),
                         ),
-                      ],
-                    ),
 
-                    const SizedBox(height: 20),
+                        const SizedBox(height: 20),
 
-                    // ================= LOGIN BUTTON =================
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryColor,
-                          foregroundColor: Colors.white,
-                          elevation: 5,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
+                        // ================= PASSWORD =================
+                        _buildLabel("PASSWORD"),
+                        const SizedBox(height: 4),
+
+                        TextFormField(
+                          obscureText: !showPassword,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: "Enter password",
+                            hintStyle: const TextStyle(color: Colors.white38),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.05),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 16,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: const BorderSide(color: Colors.white12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: const BorderSide(
+                                color: AppColors.secondaryColor,
+                              ),
+                            ),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                showPassword
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                                color: Colors.white38,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  showPassword = !showPassword;
+                                });
+                              },
+                            ),
                           ),
+                          onChanged: (value) => password = value,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return "Enter password";
+                            }
+                            if (!isValidPassword(value)) {
+                              return "Password must be at least 6 characters";
+                            }
+                            return null;
+                          },
                         ),
-                        onPressed: () async {
-                          if (_formKey.currentState!.validate()) {
-                            setState(() => loader = true);
 
-                            final result = await ApiService.login(
-                              email!,
-                              password!,
-                            );
+                        const SizedBox(height: 6),
 
-                            if (context.mounted) {
-                              setState(() => loader = false);
+                        // 🔹 Remember Me + Forgot Password row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Remember Me
+                            GestureDetector(
+                              onTap: () => setState(() => _rememberMe = !_rememberMe),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: Checkbox(
+                                      value: _rememberMe,
+                                      onChanged: (val) => setState(() => _rememberMe = val ?? false),
+                                      activeColor: AppColors.secondaryColor,
+                                      checkColor: Colors.white,
+                                      side: const BorderSide(color: Colors.white38),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Remember me',
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
 
-                              if (result['success']) {
-                                final prefs =
-                                    await SharedPreferences.getInstance();
-                                await prefs.setString(
-                                  'accessToken',
-                                  result['data']['access'],
+                            // Forgot Password
+                            TextButton(
+                              onPressed: () {
+                                RouteGenerator.navigateToPage(
+                                  context,
+                                  Routes.forgotPasswordRoute,
                                 );
-                                await prefs.setString(
-                                  'refreshToken',
-                                  result['data']['refresh'],
-                                );
-                                await prefs.setString('username', result['data']['username']);
-                                await prefs.setInt('userId', result['data']['user_id']);
-                                 NotificationService().registerFcmTokenAfterLogin();
+                              },
+                              child: const Text(
+                                "Forgot Password?",
+                                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
 
-                                // 🔹 Also save credentials if rememberMe or for Biometric setup later
-                                await prefs.setString(
-                                  'last_email',
+                        const SizedBox(height: 20),
+
+                        // ================= LOGIN BUTTON =================
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryColor,
+                              foregroundColor: Colors.white,
+                              elevation: 5,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            onPressed: () async {
+                              if (_formKey.currentState!.validate()) {
+                                setState(() => loader = true);
+
+                                final result = await ApiService.login(
                                   email!,
+                                  password!,
                                 );
 
-                                // 🔹 Save Remember Me preference
-                                await prefs.setBool('isRemembered', _rememberMe);
-
-                                // 🔹 Check if biometric setup is needed for THIS user
-                                final storedBioUser = await secureStorage.read(key: 'bio_email');
-                                final biometricSetForThisUser = storedBioUser == email;
-
-                                if (!biometricSetForThisUser &&
-                                    isBiometricAvailable &&
-                                    context.mounted) {
-                                  _showEnableBiometricDialog(
-                                    context,
-                                    result['data']['access'],
-                                    result['data']['refresh'],
-                                    email!,
-                                    password!,
-                                  );
-                                } else {
-                                  RouteGenerator.navigateToPageWithoutStack(
-                                    context,
-                                    Routes.homeRoute,
-                                  );
-                                }
-                              } else {
                                 if (context.mounted) {
-                                  _showErrorDialog(context, result['error']);
+                                  setState(() => loader = false);
+
+                                  if (result['success']) {
+                                    final prefs =
+                                        await SharedPreferences.getInstance();
+                                    await prefs.setString(
+                                      'accessToken',
+                                      result['data']['access'],
+                                    );
+                                    await prefs.setString(
+                                      'refreshToken',
+                                      result['data']['refresh'],
+                                    );
+                                    await prefs.setString('username', result['data']['username']);
+                                    await prefs.setInt('userId', result['data']['user_id']);
+                                     NotificationService().registerFcmTokenAfterLogin();
+
+                                    // 🔹 Also save credentials if rememberMe or for Biometric setup later
+                                    await prefs.setString(
+                                      'last_email',
+                                      email!,
+                                    );
+
+                                    // 🔹 Save Remember Me preference
+                                    await prefs.setBool('isRemembered', _rememberMe);
+
+                                    // 🔹 Check if biometric setup is needed for THIS user
+                                    final storedBioUser = await secureStorage.read(key: 'bio_email');
+                                    final biometricSetForThisUser = storedBioUser == email;
+
+                                    if (!biometricSetForThisUser &&
+                                        isBiometricAvailable &&
+                                        context.mounted) {
+                                      _showEnableBiometricDialog(
+                                        context,
+                                        result['data']['access'],
+                                        result['data']['refresh'],
+                                        email!,
+                                        password!,
+                                      );
+                                    } else {
+                                      RouteGenerator.navigateToPageWithoutStack(
+                                        context,
+                                        Routes.homeRoute,
+                                      );
+                                    }
+                                  } else {
+                                    if (context.mounted) {
+                                      _showErrorDialog(context, result['error']);
+                                    }
+                                  }
                                 }
                               }
-                            }
-                          }
-                        },
-                        child: loader
-                            ? const CircularProgressIndicator(
-                                color: Colors.white,
-                              )
-                            : const Text(
-                                "Login",
-                                style: TextStyle(fontSize: 18),
+                            },
+                            child: const Text(
+                                    "Login",
+                                    style: TextStyle(fontSize: 18),
+                                  ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // ================= FINGERPRINT LOGIN =================
+                        if (isBiometricAvailable)
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: isBiometricEnabled
+                                      ? AppColors.secondaryColor
+                                      : Colors.white24,
+                                  width: 1.5,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                foregroundColor: isBiometricEnabled
+                                    ? AppColors.secondaryColor
+                                    : Colors.white54,
                               ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ================= FINGERPRINT LOGIN =================
-                    if (isBiometricAvailable)
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(
-                              color: isBiometricEnabled
-                                  ? AppColors.secondaryColor
-                                  : Colors.white24,
-                              width: 1.5,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            foregroundColor: isBiometricEnabled
-                                ? AppColors.secondaryColor
-                                : Colors.white54,
-                          ),
-                          icon: const Icon(Icons.fingerprint, size: 28),
-                          label: const Text(
-                            "Login with Fingerprint",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                              icon: const Icon(Icons.fingerprint, size: 28),
+                              label: const Text(
+                                "Login with Fingerprint",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              onPressed: () {
+                                if (isBiometricEnabled) {
+                                  _loginWithBiometric();
+                                } else {
+                                  _showBiometricNotEnabledDialog(context);
+                                }
+                              },
                             ),
                           ),
-                          onPressed: () {
-                            if (isBiometricEnabled) {
-                              _loginWithBiometric();
-                            } else {
-                              _showBiometricNotEnabledDialog(context);
-                            }
-                          },
-                        ),
-                      ),
 
-                    if (isBiometricEnabled)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8.0),
-                        child: Text(
-                          "Biometric login is active",
-                          style: TextStyle(color: Colors.green, fontSize: 13),
-                        ),
-                      ),
-
-                    const SizedBox(height: 30),
-
-                    // ================= SIGNUP LINK =================
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text(
-                          "Don't have an account? ",
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            RouteGenerator.navigateToPage(
-                              context,
-                              Routes.signupRoute,
-                            );
-                          },
-                          child: const Text(
-                            "Sign up",
-                            style: TextStyle(
-                              color: AppColors.secondaryColor,
-                              fontWeight: FontWeight.bold,
-                              decoration: TextDecoration.underline,
-                              decorationColor: AppColors.secondaryColor,
+                        if (isBiometricEnabled)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              "Biometric login is active",
+                              style: TextStyle(color: Colors.green, fontSize: 13),
                             ),
                           ),
+
+                        const SizedBox(height: 30),
+
+                        // ================= SIGNUP LINK =================
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              "Don't have an account? ",
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                RouteGenerator.navigateToPage(
+                                  context,
+                                  Routes.signupRoute,
+                                );
+                              },
+                              child: const Text(
+                                "Sign up",
+                                style: TextStyle(
+                                  color: AppColors.secondaryColor,
+                                  fontWeight: FontWeight.bold,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: AppColors.secondaryColor,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+          if (loader)
+            Positioned.fill(
+              child: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.5),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.secondaryColor,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

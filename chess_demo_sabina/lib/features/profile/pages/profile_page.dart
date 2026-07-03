@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,6 +21,7 @@ class _ProfilePageState extends State<ProfilePage>
   String? username;
   String? email;
   bool isLoading = true;
+  bool isLoggingOut = false;
   final LocalAuthentication auth = LocalAuthentication();
   final FlutterSecureStorage secureStorage = const FlutterSecureStorage();
 
@@ -80,6 +82,9 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   Future<void> _logout() async {
+    setState(() {
+      isLoggingOut = true;
+    });
     final prefs = await SharedPreferences.getInstance();
     final accessToken = prefs.getString('accessToken');
     final refreshToken = prefs.getString('refreshToken');
@@ -231,42 +236,62 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: AppColors.woodGradient,
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: AppColors.woodGradient,
+              ),
+            ),
+            child: isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.secondaryColor,
+                    ),
+                  )
+                : SafeArea(
+                    child: Column(
+                      children: [
+                        // ── Header ──
+                        _buildHeader(),
+
+                        // ── Tab Bar ──
+                        _buildTabBar(),
+
+                        // ── Tab Views ──
+                        Expanded(
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [
+                              _buildPersonalInfoTab(),
+                              _buildSettingsTab(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
-        ),
-        child: isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: AppColors.secondaryColor,
-                ),
-              )
-            : SafeArea(
-                child: Column(
-                  children: [
-                    // ── Header ──
-                    _buildHeader(),
-
-                    // ── Tab Bar ──
-                    _buildTabBar(),
-
-                    // ── Tab Views ──
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [
-                          _buildPersonalInfoTab(),
-                          _buildSettingsTab(),
-                        ],
+          if (isLoggingOut)
+            Positioned.fill(
+              child: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.5),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.secondaryColor,
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
+            ),
+        ],
       ),
     );
   }
