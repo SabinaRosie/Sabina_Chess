@@ -25,6 +25,7 @@ class _DashboardPageState extends State<DashboardPage>
   bool _showInfo = false; // ── Toggle for description ──
   int _invitationCount = 0;
   int _coins = 0;
+  String _username = "Player";
   StreamSubscription? _invitationSub;
 
   @override
@@ -57,6 +58,7 @@ class _DashboardPageState extends State<DashboardPage>
     if (result['success']) {
       setState(() {
         _coins = result['data']['coins'] ?? 0;
+        _username = result['data']['username'] ?? 'Player';
       });
     }
   }
@@ -314,8 +316,31 @@ class _DashboardPageState extends State<DashboardPage>
                   children: [
                     // ── Coin Header Row ──
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
+                        // ── Profile Icon ──
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: AppColors.secondaryColor.withOpacity(0.8),
+                              radius: 18,
+                              child: Text(
+                                _username.isNotEmpty ? _username[0].toUpperCase() : 'P',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _username,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // ── Coins ──
                         GestureDetector(
                           onTap: _showCoinDialog,
                           child: Container(
@@ -598,6 +623,27 @@ class _DashboardPageState extends State<DashboardPage>
                               ),
                             ),
                           ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // ── Watch Ad to Earn Coins Button ──
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        onPressed: _watchAdForCoins,
+                        icon: const Icon(Icons.play_circle_outline_rounded, size: 22),
+                        label: const Text(
+                          "Watch Ad (+100 Coins)",
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.amber,
+                          side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(32),
+                          ),
                         ),
                       ),
                     ),
